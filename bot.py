@@ -331,11 +331,11 @@ async def read_full_message(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     formatted_text = (
         f"📖 <b>Email Details</b>\n\n"
-        f"📌 <b>Subject:</b> {safe_html(subject)}\n"
+        f"<blockquote>📌 <b>Subject:</b> <b>{safe_html(subject)}</b>\n"
         f"👤 <b>From:</b> <code>{safe_html(sender)}</code>\n"
-        f"🕒 <b>Date:</b> <code>{safe_html(date_str)}</code>\n\n"
-        f"━━━━━━━━━━━━ <b>FULL BODY</b> ━━━━━━━━━━━━\n"
-        f"{safe_html(display_body)}\n"
+        f"🕒 <b>Date:</b> <code>{safe_html(date_str)}</code></blockquote>\n\n"
+        f"━━━━━━━━━━━━ <b>MESSAGE BODY</b> ━━━━━━━━━━━━\n"
+        f"<blockquote>{safe_html(display_body)}</blockquote>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     )
 
