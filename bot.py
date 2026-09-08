@@ -165,6 +165,8 @@ async def start_custom_name_prompt(update: Update, context: ContextTypes.DEFAULT
 
 async def process_custom_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     custom_name = update.message.text.strip()
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help)', custom_name) or custom_name.startswith("/"):
+        return await cancel_and_route_menu(update, context)
     await create_new_mail(update, context, custom_name=custom_name)
     return ConversationHandler.END
 
@@ -640,9 +642,34 @@ async def start_login_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(text, parse_mode="HTML")
     return WAITING_FOR_LOGIN_INPUT
 
+async def cancel_and_route_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip() if update.message and update.message.text else ""
+    if "Create Custom Mail" in text:
+        return await start_custom_name_prompt(update, context)
+    elif "Create Random Mail" in text:
+        await create_new_mail(update, context)
+    elif "Saved Mails" in text:
+        await list_saved_mails(update, context)
+    elif "Current Inbox" in text:
+        await current_inbox_command(update, context)
+    elif "Export TXT" in text:
+        await export_txt_command(update, context)
+    elif "Login Account" in text or "Restore Mail" in text:
+        return await start_login_prompt(update, context)
+    elif "Language" in text:
+        await toggle_language(update, context)
+    elif "Help" in text:
+        await help_command(update, context)
+    elif text.startswith("/start"):
+        await start_command(update, context)
+    return ConversationHandler.END
+
 async def process_login_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_input = update.message.text.strip()
     user_id = update.effective_user.id
+
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help)', raw_input) or raw_input.startswith("/"):
+        return await cancel_and_route_menu(update, context)
 
     if ":" not in raw_input and " " not in raw_input:
         await update.message.reply_text("❌ Invalid format! Please enter <code>email : password</code>", parse_mode="HTML")
@@ -690,6 +717,11 @@ def setup_bot_application(token: str) -> Application:
     request = HTTPXRequest(connect_timeout=30.0, read_timeout=30.0)
     app = Application.builder().token(token).request(request).build()
 
+    menu_fallback = MessageHandler(
+        filters.Regex("^(✏️ Create Custom Mail|📧 Create Random Mail|🗂 Saved Mails|📥 Current Inbox|📁 Export TXT|🔐 Login Account|🔐 Restore Mail|🌐 Language / ভাষা|❓ Help)$"),
+        cancel_and_route_menu
+    )
+
     login_conv = ConversationHandler(
         entry_points=[
             CommandHandler("login", start_login_prompt),
@@ -701,7 +733,7 @@ def setup_bot_application(token: str) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_login_input)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_flow)]
+        fallbacks=[CommandHandler("cancel", cancel_flow), menu_fallback]
     )
 
     custom_conv = ConversationHandler(
@@ -713,7 +745,7 @@ def setup_bot_application(token: str) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_custom_name_input)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_flow)]
+        fallbacks=[CommandHandler("cancel", cancel_flow), menu_fallback]
     )
 
     app.add_handler(CommandHandler("start", start_command))
