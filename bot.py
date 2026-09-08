@@ -31,6 +31,42 @@ WAITING_FOR_CUSTOM_NAME = 2
 def safe_html(text: str) -> str:
     return html.escape(str(text or ""))
 
+FIRST_NAMES = [
+    "alex", "david", "sarah", "michael", "emily", "james", "daniel", "sophia",
+    "oliver", "william", "emma", "lucas", "liam", "benjamin", "chloe", "ethan",
+    "mason", "isabella", "henry", "samuel", "ryan", "nathan", "andrew", "joshua",
+    "matthew", "jacob", "grace", "hannah", "logan", "jack", "noah", "aiden",
+    "clara", "mia", "zoe", "ava", "leo", "adam", "kevin", "eric", "brian",
+    "jason", "justin", "brandon", "dylan", "tyler"
+]
+
+LAST_NAMES = [
+    "smith", "johnson", "brown", "davis", "wilson", "taylor", "clark", "miller",
+    "white", "martin", "anderson", "thomas", "moore", "harris", "walker", "young",
+    "king", "wright", "scott", "green", "baker", "adams", "nelson", "hill",
+    "hall", "rivera", "campbell", "mitchell", "carter", "roberts", "parker", "evans"
+]
+
+KEYWORDS = ["dev", "tech", "work", "pro", "official", "net", "hub", "mail", "contact", "info"]
+
+def generate_professional_username():
+    fn = random.choice(FIRST_NAMES)
+    ln = random.choice(LAST_NAMES)
+    kw = random.choice(KEYWORDS)
+    num = random.randint(10, 999)
+    
+    style = random.choice([1, 2, 3, 4, 5])
+    if style == 1:
+        return f"{fn}.{ln}{num}"       # e.g., alex.smith84
+    elif style == 2:
+        return f"{fn}_{ln}{num}"       # e.g., david_miller19
+    elif style == 3:
+        return f"{fn}{ln}{num}"         # e.g., sarahdavis502
+    elif style == 4:
+        return f"{fn}.{kw}{num}"       # e.g., michael.dev42
+    else:
+        return f"{fn}_{kw}{num}"       # e.g., emily_pro92
+
 def generate_random_string(length=8):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
@@ -82,7 +118,7 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
             clean_name = re.sub(r'[^a-zA-Z0-9._-]', '', custom_name).lower()[:25]
             full_email = f"{clean_name}@{selected_domain}"
         else:
-            random_username = f"user_{generate_random_string(7)}"
+            random_username = generate_professional_username()
             full_email = f"{random_username}@{selected_domain}"
             
         password = generate_secure_password(12)
