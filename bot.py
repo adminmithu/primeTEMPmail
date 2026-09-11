@@ -139,11 +139,11 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
 
         keyboard = [
             [
-                InlineKeyboardButton("📥 Check Inbox", callback_data=f"inbox:{full_email}"),
-                InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved")
+                InlineKeyboardButton("🟩 📥 Check Inbox", callback_data=f"inbox:{full_email}"),
+                InlineKeyboardButton("🟪 🗂 Saved Mails", callback_data="list_saved")
             ],
             [
-                InlineKeyboardButton("🗑 Delete Email", callback_data=f"del_acc:{full_email}")
+                InlineKeyboardButton("🟥 🗑 Delete Email", callback_data=f"del_acc:{full_email}")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -179,7 +179,7 @@ async def list_saved_mails(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not accounts:
         text = get_string(lang, "no_saved_mails")
-        keyboard = [[InlineKeyboardButton("➕ Create Random Mail", callback_data="cmd_create")]]
+        keyboard = [[InlineKeyboardButton("🟦 ➕ Create Random Mail", callback_data="cmd_create")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
     else:
         text = get_string(lang, "saved_mails_title")
@@ -191,11 +191,11 @@ async def list_saved_mails(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([InlineKeyboardButton(f"📧 {email} {status}", callback_data=f"switch:{email}")])
         
         keyboard.append([
-            InlineKeyboardButton("➕ Create New", callback_data="cmd_create"),
-            InlineKeyboardButton("🔐 Login Existing", callback_data="login_prompt")
+            InlineKeyboardButton("🟩 ➕ Create New", callback_data="cmd_create"),
+            InlineKeyboardButton("🟥 🔐 Login Existing", callback_data="login_prompt")
         ])
         keyboard.append([
-            InlineKeyboardButton("🗑 Delete All Accounts", callback_data="confirm_del_all")
+            InlineKeyboardButton("🔴 🗑 Delete All Accounts", callback_data="confirm_del_all")
         ])
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -247,12 +247,12 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
         text = get_string(lang, "inbox_empty", email=safe_html(target_email))
         keyboard = [
             [
-                InlineKeyboardButton("🔄 Refresh Inbox", callback_data=f"inbox:{target_email}"),
-                InlineKeyboardButton("🗂 Saved List", callback_data="list_saved")
+                InlineKeyboardButton("🟩 🔄 Refresh Inbox", callback_data=f"inbox:{target_email}"),
+                InlineKeyboardButton("🟪 🗂 Saved List", callback_data="list_saved")
             ],
             [
-                InlineKeyboardButton("🔑 Credentials", callback_data=f"show_creds:{target_email}"),
-                InlineKeyboardButton("🗑 Delete Email", callback_data=f"del_acc:{target_email}")
+                InlineKeyboardButton("🟨 🔑 Credentials", callback_data=f"show_creds:{target_email}"),
+                InlineKeyboardButton("🟥 🗑 Delete Email", callback_data=f"del_acc:{target_email}")
             ]
         ]
     else:
@@ -274,21 +274,21 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
                 otp_code = preview_otps[0]
                 text += f"   ⚡ OTP: <code>{otp_code}</code>\n\n"
                 keyboard.append([
-                    InlineKeyboardButton(f"📩 #{idx} {subject[:22]}", callback_data=f"read:{target_email}:{msg_id}"),
-                    InlineKeyboardButton(f"🔑 Copy OTP: {otp_code}", callback_data=f"copy_otp:{otp_code}")
+                    InlineKeyboardButton(f"🟦 📩 #{idx} {subject[:22]}", callback_data=f"read:{target_email}:{msg_id}"),
+                    InlineKeyboardButton(f"⚡ 🔑 Copy OTP: {otp_code}", callback_data=f"copy_otp:{otp_code}")
                 ])
             else:
                 text += "\n"
-                button_label = f"📩 #{idx} {subject[:28]}"
+                button_label = f"🟦 📩 #{idx} {subject[:28]}"
                 keyboard.append([InlineKeyboardButton(button_label, callback_data=f"read:{target_email}:{msg_id}")])
 
         keyboard.append([
-            InlineKeyboardButton("🔄 Refresh Inbox", callback_data=f"inbox:{target_email}"),
-            InlineKeyboardButton("🗂 Saved List", callback_data="list_saved")
+            InlineKeyboardButton("🟩 🔄 Refresh Inbox", callback_data=f"inbox:{target_email}"),
+            InlineKeyboardButton("🟪 🗂 Saved List", callback_data="list_saved")
         ])
         keyboard.append([
-            InlineKeyboardButton("🔑 Credentials", callback_data=f"show_creds:{target_email}"),
-            InlineKeyboardButton("🗑 Delete Email", callback_data=f"del_acc:{target_email}")
+            InlineKeyboardButton("🟨 🔑 Credentials", callback_data=f"show_creds:{target_email}"),
+            InlineKeyboardButton("🟥 🗑 Delete Email", callback_data=f"del_acc:{target_email}")
         ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -355,7 +355,7 @@ async def read_full_message(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     keyboard = [
         [
             InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}"),
-            InlineKeyboardButton("🗑 Delete Msg", callback_data=f"del_msg:{email}:{msg_id}")
+            InlineKeyboardButton("🟥 🗑 Delete Msg", callback_data=f"del_msg:{email}:{msg_id}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -540,10 +540,12 @@ async def auto_inbox_poller_task(app: Application):
                             lang = await db.get_user_language(u_id)
                             alert_msg = get_string(lang, "new_email_alert", email=safe_html(email), subject=safe_html(subject), sender=safe_html(sender))
                             
+                            kb = []
                             if otps:
                                 alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
+                                kb.append([InlineKeyboardButton(f"⚡ 🔑 Copy OTP: {otps[0]}", callback_data=f"copy_otp:{otps[0]}")])
 
-                            kb = [[InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}")]]
+                            kb.append([InlineKeyboardButton("🟦 📖 Read Email", callback_data=f"read:{email}:{latest_id}")])
                             
                             await app.bot.send_message(
                                 chat_id=u_id,
@@ -584,8 +586,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "confirm_del_all":
         kb = [
             [
-                InlineKeyboardButton("✅ Yes, Delete All", callback_data="do_del_all"),
-                InlineKeyboardButton("❌ Cancel", callback_data="list_saved")
+                InlineKeyboardButton("🟥 ✅ Yes, Delete All", callback_data="do_del_all"),
+                InlineKeyboardButton("🟩 ❌ Cancel", callback_data="list_saved")
             ]
         ]
         await query.message.edit_text("⚠️ <b>Are you sure you want to delete ALL saved email accounts?</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
@@ -718,14 +720,14 @@ def setup_bot_application(token: str) -> Application:
     app = Application.builder().token(token).request(request).build()
 
     menu_fallback = MessageHandler(
-        filters.Regex("^(✏️ Create Custom Mail|📧 Create Random Mail|🗂 Saved Mails|📥 Current Inbox|📁 Export TXT|🔐 Login Account|🔐 Restore Mail|🌐 Language / ভাষা|❓ Help)$"),
+        filters.Regex(".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help).*"),
         cancel_and_route_menu
     )
 
     login_conv = ConversationHandler(
         entry_points=[
             CommandHandler("login", start_login_prompt),
-            MessageHandler(filters.Regex("^(🔐 Login Account|🔐 Restore Mail)$"), start_login_prompt),
+            MessageHandler(filters.Regex(".*(Login Account|Restore Mail).*"), start_login_prompt),
             CallbackQueryHandler(start_login_prompt, pattern="^login_prompt$")
         ],
         states={
@@ -738,7 +740,7 @@ def setup_bot_application(token: str) -> Application:
 
     custom_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^✏️ Create Custom Mail$"), start_custom_name_prompt)
+            MessageHandler(filters.Regex(".*Create Custom Mail.*"), start_custom_name_prompt)
         ],
         states={
             WAITING_FOR_CUSTOM_NAME: [
@@ -757,12 +759,12 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(CommandHandler("backup", admin_backup_command))
     app.add_handler(CommandHandler("help", help_command))
 
-    app.add_handler(MessageHandler(filters.Regex("^📧 Create Random Mail$"), create_new_mail))
-    app.add_handler(MessageHandler(filters.Regex("^🗂 Saved Mails$"), list_saved_mails))
-    app.add_handler(MessageHandler(filters.Regex("^📥 Current Inbox$"), current_inbox_command))
-    app.add_handler(MessageHandler(filters.Regex("^📁 Export TXT$"), export_txt_command))
-    app.add_handler(MessageHandler(filters.Regex("^🌐 Language / ভাষা$"), toggle_language))
-    app.add_handler(MessageHandler(filters.Regex("^❓ Help$"), help_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Create Random Mail.*"), create_new_mail))
+    app.add_handler(MessageHandler(filters.Regex(".*Saved Mails.*"), list_saved_mails))
+    app.add_handler(MessageHandler(filters.Regex(".*Current Inbox.*"), current_inbox_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Export TXT.*"), export_txt_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Language.*"), toggle_language))
+    app.add_handler(MessageHandler(filters.Regex(".*Help.*"), help_command))
 
     app.add_handler(login_conv)
     app.add_handler(custom_conv)
