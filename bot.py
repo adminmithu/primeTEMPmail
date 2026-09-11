@@ -75,16 +75,17 @@ def generate_secure_password(length=12):
     return ''.join(random.choices(chars, k=length))
 
 def get_main_reply_keyboard(lang: str = "bn"):
-    from telegram import ReplyKeyboardMarkup, KeyboardButton
     b = lambda key: get_string(lang, key)
-    keyboard = [
-        [KeyboardButton(b("btn_create_custom"))],
-        [KeyboardButton(b("btn_create_random"))],
-        [KeyboardButton(b("btn_saved_mails")), KeyboardButton(b("btn_current_inbox"))],
-        [KeyboardButton(b("btn_export_txt")), KeyboardButton(b("btn_login"))],
-        [KeyboardButton(b("btn_lang")), KeyboardButton(b("btn_help"))]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return {
+        "keyboard": [
+            [{"text": b("btn_create_custom"), "style": "success"}],
+            [{"text": b("btn_create_random"), "style": "primary"}],
+            [{"text": b("btn_saved_mails"), "style": "primary"}, {"text": b("btn_current_inbox"), "style": "primary"}],
+            [{"text": b("btn_export_txt"), "style": "primary"}, {"text": b("btn_login"), "style": "danger"}],
+            [{"text": b("btn_lang"), "style": "primary"}, {"text": b("btn_help"), "style": "primary"}]
+        ],
+        "resize_keyboard": True
+    }
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user

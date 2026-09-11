@@ -101,11 +101,12 @@ async def vercel_cron_job():
                         lang = await get_user_language(u_id)
                         alert_msg = get_string(lang, "new_email_alert", email=safe_html(email), subject=safe_html(subject), sender=safe_html(sender))
                         
+                        kb = []
                         if otps:
                             alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
+                            kb.append([InlineKeyboardButton(f"⚡ Copy OTP: {otps[0]}", callback_data=f"copy_otp:{otps[0]}", api_kwargs={"style": "success"})])
 
-                        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                        kb = [[InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}")]]
+                        kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
                         
                         await bot_app.bot.send_message(
                             chat_id=u_id,
