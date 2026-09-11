@@ -27,14 +27,14 @@ STRINGS = {
             "6️⃣ <b>🔐 Login Account:</b> আগের তৈরি ইমেল ও পাসওয়ার্ড দিয়ে রিস্টোর করুন।\n"
             "7️⃣ <b>🌐 Language / ভাষা:</b> বটের ভাষা পরিবর্তন করুন।"
         ),
-        "btn_create_custom": "🟩 ✏️ Create Custom Mail",
-        "btn_create_random": "🟦 📧 Create Random Mail",
-        "btn_saved_mails": "🟪 🗂 Saved Mails",
-        "btn_current_inbox": "🟩 📥 Current Inbox",
-        "btn_login": "🟥 🔐 Login Account",
-        "btn_export_txt": "🟧 📁 Export TXT",
-        "btn_lang": "🟨 🌐 Language / ভাষা",
-        "btn_help": "🟦 ❓ Help",
+        "btn_create_custom": "✏️ Create Custom Mail",
+        "btn_create_random": "📧 Create Random Mail",
+        "btn_saved_mails": "🗂 Saved Mails",
+        "btn_current_inbox": "📥 Current Inbox",
+        "btn_login": "🔐 Login Account",
+        "btn_export_txt": "📁 Export TXT",
+        "btn_lang": "🌐 Language / ভাষা",
+        "btn_help": "❓ Help",
         "creating_mail": "<blockquote>🔄 <b>নতুন ইমেইল অ্যাকাউন্ট তৈরি করা হচ্ছে...</b>\n<i>অনুগ্রহ করে ২ সেকেন্ড অপেক্ষা করুন।</i></blockquote>",
         "mail_created_success": (
             "🎉 <b>নতুন ইমেইল সফলভাবে তৈরি হয়েছে!</b>\n"
@@ -106,14 +106,14 @@ STRINGS = {
             "6️⃣ <b>🔐 Login Account:</b> Restore using email & password.\n"
             "7️⃣ <b>🌐 Language / ভাষা:</b> Change bot language."
         ),
-        "btn_create_custom": "🟩 ✏️ Create Custom Mail",
-        "btn_create_random": "🟦 📧 Create Random Mail",
-        "btn_saved_mails": "🟪 🗂 Saved Mails",
-        "btn_current_inbox": "🟩 📥 Current Inbox",
-        "btn_login": "🟥 🔐 Login Account",
-        "btn_export_txt": "🟧 📁 Export TXT",
-        "btn_lang": "🟨 🌐 Language / ভাষা",
-        "btn_help": "🟦 ❓ Help",
+        "btn_create_custom": "✏️ Create Custom Mail",
+        "btn_create_random": "📧 Create Random Mail",
+        "btn_saved_mails": "🗂 Saved Mails",
+        "btn_current_inbox": "📥 Current Inbox",
+        "btn_login": "🔐 Login Account",
+        "btn_export_txt": "📁 Export TXT",
+        "btn_lang": "🌐 Language / ভাষা",
+        "btn_help": "❓ Help",
         "creating_mail": "<blockquote>🔄 <b>Creating new email account...</b>\n<i>Please wait a moment.</i></blockquote>",
         "mail_created_success": (
             "🎉 <b>New Email Successfully Created!</b>\n"

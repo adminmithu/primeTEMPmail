@@ -139,11 +139,11 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
 
         keyboard = [
             [
-                InlineKeyboardButton("🟩 📥 Check Inbox", callback_data=f"inbox:{full_email}"),
-                InlineKeyboardButton("🟪 🗂 Saved Mails", callback_data="list_saved")
+                InlineKeyboardButton("📥 Check Inbox", callback_data=f"inbox:{full_email}", api_kwargs={"style": "success"}),
+                InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})
             ],
             [
-                InlineKeyboardButton("🟥 🗑 Delete Email", callback_data=f"del_acc:{full_email}")
+                InlineKeyboardButton("🗑️ Delete Email", callback_data=f"del_acc:{full_email}", api_kwargs={"style": "danger"})
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -179,23 +179,26 @@ async def list_saved_mails(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not accounts:
         text = get_string(lang, "no_saved_mails")
-        keyboard = [[InlineKeyboardButton("🟦 ➕ Create Random Mail", callback_data="cmd_create")]]
+        keyboard = [[InlineKeyboardButton("🚀 ➕ Create Random Mail", callback_data="cmd_create", api_kwargs={"style": "success"})]]
         reply_markup = InlineKeyboardMarkup(keyboard)
     else:
         text = get_string(lang, "saved_mails_title")
         keyboard = []
         for acc in accounts:
             email = acc["email"]
-            status = "🟢 (Active)" if email == active_email else ""
-            text += f"• <code>{safe_html(email)}</code> {status}\n"
-            keyboard.append([InlineKeyboardButton(f"📧 {email} {status}", callback_data=f"switch:{email}")])
+            status_badge = "[🟢 Active]" if email == active_email else ""
+            status_text = "🟢 (Active)" if email == active_email else ""
+            text += f"• <code>{safe_html(email)}</code> {status_text}\n"
+            btn_label = f"📧 {email} {status_badge}".strip()
+            style_type = "success" if email == active_email else "primary"
+            keyboard.append([InlineKeyboardButton(btn_label, callback_data=f"switch:{email}", api_kwargs={"style": style_type})])
         
         keyboard.append([
-            InlineKeyboardButton("🟩 ➕ Create New", callback_data="cmd_create"),
-            InlineKeyboardButton("🟥 🔐 Login Existing", callback_data="login_prompt")
+            InlineKeyboardButton("⚡ Create New", callback_data="cmd_create", api_kwargs={"style": "success"}),
+            InlineKeyboardButton("🔐 Login Existing", callback_data="login_prompt", api_kwargs={"style": "primary"})
         ])
         keyboard.append([
-            InlineKeyboardButton("🔴 🗑 Delete All Accounts", callback_data="confirm_del_all")
+            InlineKeyboardButton("🗑️ Delete All Accounts", callback_data="confirm_del_all", api_kwargs={"style": "danger"})
         ])
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -247,12 +250,12 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
         text = get_string(lang, "inbox_empty", email=safe_html(target_email))
         keyboard = [
             [
-                InlineKeyboardButton("🟩 🔄 Refresh Inbox", callback_data=f"inbox:{target_email}"),
-                InlineKeyboardButton("🟪 🗂 Saved List", callback_data="list_saved")
+                InlineKeyboardButton("🔄 Refresh Inbox", callback_data=f"inbox:{target_email}", api_kwargs={"style": "success"}),
+                InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})
             ],
             [
-                InlineKeyboardButton("🟨 🔑 Credentials", callback_data=f"show_creds:{target_email}"),
-                InlineKeyboardButton("🟥 🗑 Delete Email", callback_data=f"del_acc:{target_email}")
+                InlineKeyboardButton("🔑 Credentials", callback_data=f"show_creds:{target_email}", api_kwargs={"style": "primary"}),
+                InlineKeyboardButton("🗑️ Delete Email", callback_data=f"del_acc:{target_email}", api_kwargs={"style": "danger"})
             ]
         ]
     else:
@@ -274,21 +277,21 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
                 otp_code = preview_otps[0]
                 text += f"   ⚡ OTP: <code>{otp_code}</code>\n\n"
                 keyboard.append([
-                    InlineKeyboardButton(f"🟦 📩 #{idx} {subject[:22]}", callback_data=f"read:{target_email}:{msg_id}"),
-                    InlineKeyboardButton(f"⚡ 🔑 Copy OTP: {otp_code}", callback_data=f"copy_otp:{otp_code}")
+                    InlineKeyboardButton(f"📖 #{idx} {subject[:18]}", callback_data=f"read:{target_email}:{msg_id}", api_kwargs={"style": "primary"}),
+                    InlineKeyboardButton(f"⚡ Copy OTP: {otp_code}", callback_data=f"copy_otp:{otp_code}", api_kwargs={"style": "success"})
                 ])
             else:
                 text += "\n"
-                button_label = f"🟦 📩 #{idx} {subject[:28]}"
-                keyboard.append([InlineKeyboardButton(button_label, callback_data=f"read:{target_email}:{msg_id}")])
+                button_label = f"📖 #{idx} {subject[:28]}"
+                keyboard.append([InlineKeyboardButton(button_label, callback_data=f"read:{target_email}:{msg_id}", api_kwargs={"style": "primary"})])
 
         keyboard.append([
-            InlineKeyboardButton("🟩 🔄 Refresh Inbox", callback_data=f"inbox:{target_email}"),
-            InlineKeyboardButton("🟪 🗂 Saved List", callback_data="list_saved")
+            InlineKeyboardButton("🔄 Refresh Inbox", callback_data=f"inbox:{target_email}", api_kwargs={"style": "success"}),
+            InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})
         ])
         keyboard.append([
-            InlineKeyboardButton("🟨 🔑 Credentials", callback_data=f"show_creds:{target_email}"),
-            InlineKeyboardButton("🟥 🗑 Delete Email", callback_data=f"del_acc:{target_email}")
+            InlineKeyboardButton("🔑 Credentials", callback_data=f"show_creds:{target_email}", api_kwargs={"style": "primary"}),
+            InlineKeyboardButton("🗑️ Delete Email", callback_data=f"del_acc:{target_email}", api_kwargs={"style": "danger"})
         ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -354,8 +357,8 @@ async def read_full_message(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     keyboard = [
         [
-            InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}"),
-            InlineKeyboardButton("🟥 🗑 Delete Msg", callback_data=f"del_msg:{email}:{msg_id}")
+            InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}", api_kwargs={"style": "primary"}),
+            InlineKeyboardButton("🗑️ Delete Msg", callback_data=f"del_msg:{email}:{msg_id}", api_kwargs={"style": "danger"})
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -543,9 +546,9 @@ async def auto_inbox_poller_task(app: Application):
                             kb = []
                             if otps:
                                 alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
-                                kb.append([InlineKeyboardButton(f"⚡ 🔑 Copy OTP: {otps[0]}", callback_data=f"copy_otp:{otps[0]}")])
+                                kb.append([InlineKeyboardButton(f"⚡ Copy OTP: {otps[0]}", callback_data=f"copy_otp:{otps[0]}", api_kwargs={"style": "success"})])
 
-                            kb.append([InlineKeyboardButton("🟦 📖 Read Email", callback_data=f"read:{email}:{latest_id}")])
+                            kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
                             
                             await app.bot.send_message(
                                 chat_id=u_id,
@@ -586,8 +589,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "confirm_del_all":
         kb = [
             [
-                InlineKeyboardButton("🟥 ✅ Yes, Delete All", callback_data="do_del_all"),
-                InlineKeyboardButton("🟩 ❌ Cancel", callback_data="list_saved")
+                InlineKeyboardButton("🔴 Yes, Delete All", callback_data="do_del_all", api_kwargs={"style": "danger"}),
+                InlineKeyboardButton("❌ Cancel", callback_data="list_saved", api_kwargs={"style": "primary"})
             ]
         ]
         await query.message.edit_text("⚠️ <b>Are you sure you want to delete ALL saved email accounts?</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
@@ -608,7 +611,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🔑 Password: <code>{safe_html(acc['password'])}</code>\n\n"
                 f"💡 <i>Tip: Tap email or password to copy!</i>"
             )
-            kb = [[InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}")]]
+            kb = [[InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}", api_kwargs={"style": "primary"})]]
             await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     elif data.startswith("del_acc:"):
         email = data.split(":", 1)[1]
