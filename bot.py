@@ -71,8 +71,8 @@ def generate_random_string(length=8):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 def generate_secure_password(length=12):
-    chars = string.ascii_letters + string.digits + "!@#$"
-    return ''.join(random.choices(chars, k=length))
+    chars = string.ascii_letters + string.digits
+    return "Pass" + ''.join(random.choices(chars, k=length - 4))
 
 def get_main_reply_keyboard(lang: str = "bn"):
     b = lambda key: get_string(lang, key)

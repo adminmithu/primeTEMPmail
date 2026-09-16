@@ -34,24 +34,33 @@ class MailTmAPI:
                 return res.json()
             else:
                 logger.error(f"Failed to create account: {res.status_code} {res.text}")
-                err_detail = res.json().get("detail", res.text) if res.headers.get("content-type", "").startswith("application/json") else res.text
-                raise Exception(f"Account Creation Error: {err_detail}")
+                err_detail = res.text
+                try:
+                    err_json = res.json()
+                    err_detail = err_json.get("hydra:description") or err_json.get("detail") or err_json.get("message") or res.text
+                except Exception:
+                    pass
+                raise Exception(f"{err_detail}")
 
-    async def get_token(self, address: str, password: str) -> str:
+    async def get_token(self, address: str, password: str, retries: int = 3) -> str:
         """Authenticate account credentials and get Bearer JWT Token."""
+        import asyncio
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             payload = {"address": address, "password": password}
-            res = await client.post(
-                f"{self.base_url}/token",
-                json=payload,
-                headers={"Content-Type": "application/json"}
-            )
-            if res.status_code == 200:
-                data = res.json()
-                return data.get("token", "")
-            else:
-                logger.error(f"Failed to get token for {address}: {res.status_code} {res.text}")
-                raise Exception("Invalid email or password. Login failed.")
+            for attempt in range(retries):
+                res = await client.post(
+                    f"{self.base_url}/token",
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    return data.get("token", "")
+                elif attempt < retries - 1:
+                    await asyncio.sleep(0.5)
+            
+            logger.error(f"Failed to get token for {address}: {res.status_code} {res.text}")
+            raise Exception("Invalid email or password. Login failed.")
 
     async def get_messages(self, token: str, page: int = 1) -> list:
         """Fetch inbox message summary list for the authenticated token."""
