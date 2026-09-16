@@ -170,7 +170,12 @@ async def start_custom_name_prompt(update: Update, context: ContextTypes.DEFAULT
     user_id = update.effective_user.id
     lang = await db.get_user_language(user_id)
     text = get_string(lang, "prompt_custom_name")
-    await update.message.reply_text(text, parse_mode="HTML")
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     return WAITING_FOR_CUSTOM_NAME
 
 async def process_custom_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -209,6 +214,9 @@ async def list_saved_mails(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         keyboard.append([
             InlineKeyboardButton("🗑️ Delete All Accounts", callback_data="confirm_del_all", api_kwargs={"style": "danger"})
+        ])
+        keyboard.append([
+            InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})
         ])
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -302,6 +310,9 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
         keyboard.append([
             InlineKeyboardButton("🔑 Credentials", callback_data=f"show_creds:{target_email}", api_kwargs={"style": "primary"}),
             InlineKeyboardButton("🗑️ Delete Email", callback_data=f"del_acc:{target_email}", api_kwargs={"style": "danger"})
+        ])
+        keyboard.append([
+            InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})
         ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -641,26 +652,32 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.delete_saved_account(user_id, email)
         await query.answer("Email account deleted!", show_alert=True)
         await list_saved_mails(update, context)
-    elif data.startswith("del_msg:"):
-        parts = data.split(":", 2)
-        email = parts[1]
-        msg_id = parts[2]
+    elif data == "back_main":
         user_id = update.effective_user.id
-        acc = await db.get_account(user_id, email)
-        if acc and acc.get("token"):
-            await mail_api.delete_message(acc["token"], msg_id)
-            await query.answer("Message deleted!", show_alert=True)
-            await switch_account_and_view_inbox(update, context, email)
+        lang = await db.get_user_language(user_id)
+        welcome_text = get_string(lang, "welcome", name=safe_html(update.effective_user.first_name))
+        await query.answer()
+        await query.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang))
+
+async def cancel_prompt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        user_id = update.effective_user.id
+        lang = await db.get_user_language(user_id)
+        await query.answer("Cancelled!")
+        await query.message.reply_text("🚫 Operation cancelled.", reply_markup=get_main_reply_keyboard(lang))
+    return ConversationHandler.END
 
 async def start_login_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang = await db.get_user_language(user_id)
     text = get_string(lang, "prompt_login")
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.message.edit_text(text, parse_mode="HTML")
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     else:
-        await update.message.reply_text(text, parse_mode="HTML")
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     return WAITING_FOR_LOGIN_INPUT
 
 async def cancel_and_route_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -754,7 +771,7 @@ def setup_bot_application(token: str) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_login_input)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_flow), menu_fallback],
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
         per_message=False
     )
 
@@ -767,7 +784,7 @@ def setup_bot_application(token: str) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_custom_name_input)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_flow), menu_fallback],
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
         per_message=False
     )
 
