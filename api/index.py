@@ -35,6 +35,8 @@ async def get_ptb_app() -> Application:
 async def root_index(request: Request):
     """Root route - Health Check and Auto Set Telegram Webhook."""
     base_url = str(request.base_url).rstrip('/')
+    if base_url.startswith("http://") and "localhost" not in base_url and "127.0.0.1" not in base_url:
+        base_url = "https://" + base_url[7:]
     webhook_url = f"{base_url}/api/webhook"
     
     bot_app = await get_ptb_app()
@@ -104,7 +106,7 @@ async def vercel_cron_job():
                         kb = []
                         if otps:
                             alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
-                            kb.append([InlineKeyboardButton(f"⚡ Copy OTP: {otps[0]}", callback_data=f"copy_otp:{otps[0]}", api_kwargs={"style": "success"})])
+                            kb.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
 
                         kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
                         

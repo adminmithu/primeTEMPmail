@@ -35,7 +35,8 @@ STRINGS = {
         "btn_export_txt": "📁 Export TXT",
         "btn_lang": "🌐 Language / ভাষা",
         "btn_help": "❓ Help",
-        "creating_mail": "<blockquote>🔄 <b>নতুন ইমেইল অ্যাকাউন্ট তৈরি করা হচ্ছে...</b>\n<i>অনুগ্রহ করে ২ সেকেন্ড অপেক্ষা করুন।</i></blockquote>",
+        "creating_mail": "⚡ <i>ইমেইল তৈরি হচ্ছে, অনুগ্রহ করে ১ সেকেন্ড অপেক্ষা করুন...</i>",
+        "creating_mail_toast": "⚡ ইমেইল তৈরি হচ্ছে... অনুগ্রহ করে ১ সেকেন্ড অপেক্ষা করুন! 🚀",
         "mail_created_success": (
             "🎉 <b>নতুন ইমেইল সফলভাবে তৈরি হয়েছে!</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -114,7 +115,8 @@ STRINGS = {
         "btn_export_txt": "📁 Export TXT",
         "btn_lang": "🌐 Language / ভাষা",
         "btn_help": "❓ Help",
-        "creating_mail": "<blockquote>🔄 <b>Creating new email account...</b>\n<i>Please wait a moment.</i></blockquote>",
+        "creating_mail": "⚡ <i>Creating email, please wait 1s...</i>",
+        "creating_mail_toast": "⚡ Creating email address... Please wait 1s! 🚀",
         "mail_created_success": (
             "🎉 <b>New Email Successfully Created!</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"

@@ -102,16 +102,17 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
     lang = await db.get_user_language(user_id)
     
     msg = None
-    if update.message:
-        msg = await update.message.reply_text(get_string(lang, "creating_mail"))
-    elif update.callback_query:
-        await update.callback_query.answer()
-        msg = await update.callback_query.message.edit_text(get_string(lang, "creating_mail"))
+    if update.callback_query:
+        await update.callback_query.answer(get_string(lang, "creating_mail_toast"), show_alert=False)
+    elif update.message:
+        msg = await update.message.reply_text(get_string(lang, "creating_mail"), parse_mode="HTML")
 
     try:
         domains = await mail_api.get_domains()
         if not domains:
-            if msg: await msg.edit_text("❌ No active domains found.")
+            err_msg = "❌ No active domains found."
+            if msg: await msg.edit_text(err_msg)
+            else: await context.bot.send_message(chat_id=user_id, text=err_msg)
             return
 
         selected_domain = domains[0]
@@ -151,6 +152,8 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
 
         if msg:
             await msg.edit_text(response_text, parse_mode="HTML", reply_markup=reply_markup)
+        else:
+            await context.bot.send_message(chat_id=user_id, text=response_text, parse_mode="HTML", reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Error creating mail: {e}")
@@ -279,7 +282,7 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
                 text += f"   ⚡ OTP: <code>{otp_code}</code>\n\n"
                 keyboard.append([
                     InlineKeyboardButton(f"📖 #{idx} {subject[:18]}", callback_data=f"read:{target_email}:{msg_id}", api_kwargs={"style": "primary"}),
-                    InlineKeyboardButton(f"⚡ Copy OTP: {otp_code}", callback_data=f"copy_otp:{otp_code}", api_kwargs={"style": "success"})
+                    InlineKeyboardButton(f"📋 {otp_code}", api_kwargs={"copy_text": {"text": otp_code}, "style": "success"})
                 ])
             else:
                 text += "\n"
@@ -356,12 +359,14 @@ async def read_full_message(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         for u in urls:
             formatted_text += f"• {safe_html(u)}\n"
 
-    keyboard = [
-        [
-            InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}", api_kwargs={"style": "primary"}),
-            InlineKeyboardButton("🗑️ Delete Msg", callback_data=f"del_msg:{email}:{msg_id}", api_kwargs={"style": "danger"})
-        ]
-    ]
+    keyboard = []
+    if otps:
+        keyboard.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
+    
+    keyboard.append([
+        InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}", api_kwargs={"style": "primary"}),
+        InlineKeyboardButton("🗑️ Delete Msg", callback_data=f"del_msg:{email}:{msg_id}", api_kwargs={"style": "danger"})
+    ])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
@@ -547,7 +552,7 @@ async def auto_inbox_poller_task(app: Application):
                             kb = []
                             if otps:
                                 alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
-                                kb.append([InlineKeyboardButton(f"⚡ Copy OTP: {otps[0]}", callback_data=f"copy_otp:{otps[0]}", api_kwargs={"style": "success"})])
+                                kb.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
 
                             kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
                             
@@ -586,7 +591,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await read_full_message(update, context, email, msg_id)
     elif data.startswith("copy_otp:"):
         otp_code = data.split(":", 1)[1]
-        await query.answer(f"🔑 OTP Code: {otp_code}\n(Select & copy!)", show_alert=True)
+        await query.answer(f"✅ OTP Code: {otp_code}", show_alert=False)
+        await query.message.reply_text(
+            f"⚡ <b>OTP Code:</b> <code>{safe_html(otp_code)}</code>\n<i>(Tap code above to copy instantly!)</i>",
+            parse_mode="HTML"
+        )
     elif data == "confirm_del_all":
         kb = [
             [
@@ -739,7 +748,8 @@ def setup_bot_application(token: str) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_login_input)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_flow), menu_fallback]
+        fallbacks=[CommandHandler("cancel", cancel_flow), menu_fallback],
+        per_message=False
     )
 
     custom_conv = ConversationHandler(
@@ -751,7 +761,8 @@ def setup_bot_application(token: str) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_custom_name_input)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_flow), menu_fallback]
+        fallbacks=[CommandHandler("cancel", cancel_flow), menu_fallback],
+        per_message=False
     )
 
     app.add_handler(CommandHandler("start", start_command))
