@@ -50,22 +50,26 @@ LAST_NAMES = [
 KEYWORDS = ["dev", "tech", "work", "pro", "official", "net", "hub", "mail", "contact", "info"]
 
 def generate_professional_username():
-    fn = random.choice(FIRST_NAMES)
-    ln = random.choice(LAST_NAMES)
-    kw = random.choice(KEYWORDS)
-    num = random.randint(10, 999)
-    
-    style = random.choice([1, 2, 3, 4, 5])
-    if style == 1:
-        return f"{fn}.{ln}{num}"       # e.g., alex.smith84
-    elif style == 2:
-        return f"{fn}_{ln}{num}"       # e.g., david_miller19
-    elif style == 3:
-        return f"{fn}{ln}{num}"         # e.g., sarahdavis502
-    elif style == 4:
-        return f"{fn}.{kw}{num}"       # e.g., michael.dev42
-    else:
-        return f"{fn}_{kw}{num}"       # e.g., emily_pro92
+    while True:
+        fn = random.choice(FIRST_NAMES)
+        ln = random.choice(LAST_NAMES)
+        kw = random.choice(KEYWORDS)
+        num = random.randint(10, 999)
+        
+        style = random.choice([1, 2, 3, 4, 5])
+        if style == 1:
+            u = f"{fn}.{ln[:4]}{num}"
+        elif style == 2:
+            u = f"{fn}_{ln[:4]}{num}"
+        elif style == 3:
+            u = f"{fn[:5]}{ln[:5]}{num}"
+        elif style == 4:
+            u = f"{fn}.{kw}{num}"
+        else:
+            u = f"{fn}_{kw}{num}"
+        
+        if 4 <= len(u) <= 15:
+            return u
 
 def generate_random_string(length=8):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
@@ -117,7 +121,9 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
 
         selected_domain = domains[0]
         if custom_name:
-            clean_name = re.sub(r'[^a-zA-Z0-9._-]', '', custom_name).lower()[:25]
+            clean_name = re.sub(r'[^a-zA-Z0-9._-]', '', custom_name).lower()[:15]
+            if len(clean_name) < 3:
+                clean_name = f"{clean_name}{generate_random_string(4)}"
             full_email = f"{clean_name}@{selected_domain}"
         else:
             random_username = generate_professional_username()

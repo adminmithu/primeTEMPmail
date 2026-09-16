@@ -34,12 +34,16 @@ class MailTmAPI:
                 return res.json()
             else:
                 logger.error(f"Failed to create account: {res.status_code} {res.text}")
-                err_detail = res.text
+                err_detail = "Failed to create account."
                 try:
                     err_json = res.json()
-                    err_detail = err_json.get("hydra:description") or err_json.get("detail") or err_json.get("message") or res.text
+                    violations = err_json.get("violations")
+                    if violations and isinstance(violations, list) and len(violations) > 0:
+                        err_detail = violations[0].get("message", err_detail)
+                    else:
+                        err_detail = err_json.get("hydra:description") or err_json.get("detail") or err_json.get("message") or res.text
                 except Exception:
-                    pass
+                    err_detail = res.text
                 raise Exception(f"{err_detail}")
 
     async def get_token(self, address: str, password: str, retries: int = 3) -> str:
