@@ -1,0 +1,16 @@
+# Secrets & Environment variables
+.env
+.env.local
+.env.*
+
+# Databases & Local runtime caches
+*.db
+*.sqlite3
+mail_bot.db
+__pycache__/
+
+# IDE & OS configuration files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
