@@ -9,7 +9,7 @@ from telegram.ext import Application
 # Add parent dir to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import BOT_TOKEN, ADMIN_ID
+from config import BOT_TOKEN, ADMIN_ID, WEBHOOK_SECRET
 from database import init_db, get_all_active_accounts, update_last_msg_id, get_user_language
 from mail_api import mail_api
 import parser as email_parser
@@ -42,7 +42,10 @@ async def root_index(request: Request):
     bot_app = await get_ptb_app()
     webhook_set = False
     try:
-        webhook_set = await bot_app.bot.set_webhook(webhook_url)
+        if WEBHOOK_SECRET:
+            webhook_set = await bot_app.bot.set_webhook(webhook_url, secret_token=WEBHOOK_SECRET)
+        else:
+            webhook_set = await bot_app.bot.set_webhook(webhook_url)
     except Exception as e:
         logger.error(f"Error setting webhook: {e}")
 
@@ -56,6 +59,12 @@ async def root_index(request: Request):
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):
     """Telegram Webhook handler endpoint for Vercel Serverless."""
+    if WEBHOOK_SECRET:
+        incoming_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if incoming_secret != WEBHOOK_SECRET:
+            logger.warning("Unauthorized webhook request received with invalid secret token.")
+            return Response(status_code=403, content="Forbidden: Invalid secret token")
+
     bot_app = await get_ptb_app()
     try:
         data = await request.json()
@@ -65,6 +74,7 @@ async def telegram_webhook(request: Request):
     except Exception as e:
         logger.error(f"Error handling webhook update: {e}")
         return Response(status_code=200)
+
 
 @app.get("/api/cron")
 async def vercel_cron_job():

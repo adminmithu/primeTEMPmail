@@ -4,13 +4,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Telegram Bot Config
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8921472442:AAFyYWwDQVqCO-8piY6IBvBt_EAz9EZxFOw")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "8929349073"))
-BOT_ID = os.getenv("BOT_ID", "8921472442")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+BOT_ID = os.getenv("BOT_ID", "")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 
 # Supabase Cloud Database Config (Permanent cloud persistence across Vercel deployments)
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://pnlcjkqvlpntvrbzrvqf.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBubGNqa3F2bHBudHZyYnpydnFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4NTcwNzcsImV4cCI6MjEwNDQzMzA3N30.1t97uwsU1Qnttn1sa8QufExg0nqf0IOSpsDDbCx35L8")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 # Mail.tm REST API Config
 MAIL_TM_API_BASE = "https://api.mail.tm"
@@ -23,3 +24,4 @@ else:
 
 # Inbox Background Polling Interval (in seconds)
 POLL_INTERVAL = 5
+
