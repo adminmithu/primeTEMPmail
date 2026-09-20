@@ -1031,11 +1031,15 @@ async def process_broadcast_content(update: Update, context: ContextTypes.DEFAUL
 
     for u_id in users:
         try:
-            await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
+            if msg.text:
+                await context.bot.send_message(chat_id=u_id, text=msg.text, parse_mode="HTML", disable_web_page_preview=True)
+            else:
+                await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
             success_count += 1
             await asyncio.sleep(0.05)
         except Exception:
             failed_count += 1
+
 
     report_text = (
         f"🎉 <b>ব্রডকাস্ট সফলভাবে সম্পন্ন হয়েছে!</b>\n"
