@@ -6,7 +6,7 @@ import html
 import os
 import io
 import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -87,18 +87,25 @@ def generate_secure_password(length=12):
 def get_main_reply_keyboard(lang: str = "bn", user_id: int = None):
     b = lambda key: get_string(lang, key)
     rows = [
-        [{"text": b("btn_create_custom"), "style": "success"}],
-        [{"text": b("btn_create_random"), "style": "primary"}],
-        [{"text": b("btn_saved_mails"), "style": "primary"}, {"text": b("btn_current_inbox"), "style": "primary"}],
-        [{"text": b("btn_export_txt"), "style": "primary"}, {"text": b("btn_login"), "style": "danger"}],
-        [{"text": b("btn_lang"), "style": "primary"}, {"text": b("btn_profile"), "style": "primary"}, {"text": b("btn_help"), "style": "primary"}]
+        [KeyboardButton(b("btn_create_custom"))],
+        [KeyboardButton(b("btn_create_random"))],
+        [KeyboardButton(b("btn_saved_mails")), KeyboardButton(b("btn_current_inbox"))],
+        [KeyboardButton(b("btn_export_txt")), KeyboardButton(b("btn_login"))],
+        [KeyboardButton(b("btn_lang")), KeyboardButton(b("btn_profile")), KeyboardButton(b("btn_help"))]
     ]
     if user_id and int(user_id) == ADMIN_ID:
-        rows.append([{"text": b("btn_admin"), "style": "danger"}])
-    return {
-        "keyboard": rows,
-        "resize_keyboard": True
-    }
+        rows.append([KeyboardButton(b("btn_admin"))])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+def get_admin_reply_keyboard(lang: str = "bn"):
+    rows = [
+        [KeyboardButton("📊 Live Stats"), KeyboardButton("📄 Export Users List")],
+        [KeyboardButton("🚫 Ban User"), KeyboardButton("📋 Banned Users")],
+        [KeyboardButton("💳 Pending Payments"), KeyboardButton("📢 Broadcast")],
+        [KeyboardButton("👑 Toggle VIP"), KeyboardButton("💾 DB Backup")],
+        [KeyboardButton("🔙 Back to User Menu")]
+    ]
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -682,31 +689,10 @@ async def admin_panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     lang = await db.get_user_language(user_id)
     text = get_string(lang, "admin_panel_title")
-    keyboard = [
-        [
-            InlineKeyboardButton("📊 Live Stats", callback_data="admin_stats", api_kwargs={"style": "primary"}),
-            InlineKeyboardButton("📄 Export Users List", callback_data="admin_export_users", api_kwargs={"style": "primary"})
-        ],
-        [
-            InlineKeyboardButton("🚫 Ban User", callback_data="admin_ban_prompt", api_kwargs={"style": "danger"}),
-            InlineKeyboardButton("📋 Banned Users", callback_data="admin_ban_list", api_kwargs={"style": "primary"})
-        ],
-        [
-            InlineKeyboardButton("💳 Pending Payments", callback_data="admin_pending_payments", api_kwargs={"style": "success"}),
-            InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast_prompt", api_kwargs={"style": "primary"})
-        ],
-        [
-            InlineKeyboardButton("👑 Toggle VIP", callback_data="admin_vip_prompt", api_kwargs={"style": "primary"}),
-            InlineKeyboardButton("💾 DB Backup", callback_data="admin_backup", api_kwargs={"style": "primary"})
-        ],
-        [
-            InlineKeyboardButton("🔙 Close Panel", callback_data="admin_close", api_kwargs={"style": "primary"})
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = get_admin_reply_keyboard(lang)
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+        await update.callback_query.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
     else:
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
@@ -1465,13 +1451,23 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = get_string(lang, "help_text")
     await update.message.reply_text(help_text, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
 
+async def back_to_user_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = await db.get_user_language(user_id)
+    welcome_text = get_string(lang, "welcome", name=safe_html(update.effective_user.first_name))
+    await update.message.reply_text(
+        welcome_text,
+        parse_mode="HTML",
+        reply_markup=get_main_reply_keyboard(lang, user_id)
+    )
+
 def setup_bot_application(token: str) -> Application:
     from telegram.request import HTTPXRequest
     request = HTTPXRequest(connect_timeout=30.0, read_timeout=30.0)
     app = Application.builder().token(token).request(request).build()
 
     menu_fallback = MessageHandler(
-        filters.Regex(".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin).*"),
+        filters.Regex(".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu).*"),
         cancel_and_route_menu
     )
 
@@ -1505,6 +1501,7 @@ def setup_bot_application(token: str) -> Application:
 
     ban_conv = ConversationHandler(
         entry_points=[
+            MessageHandler(filters.Regex(".*Ban User.*"), start_ban_prompt),
             CallbackQueryHandler(start_ban_prompt, pattern="^admin_ban_prompt$")
         ],
         states={
@@ -1531,6 +1528,7 @@ def setup_bot_application(token: str) -> Application:
 
     vip_conv = ConversationHandler(
         entry_points=[
+            MessageHandler(filters.Regex(".*Toggle VIP.*"), start_vip_prompt),
             CallbackQueryHandler(start_vip_prompt, pattern="^admin_vip_prompt$")
         ],
         states={
@@ -1558,6 +1556,20 @@ def setup_bot_application(token: str) -> Application:
         per_message=False
     )
 
+    broadcast_conv = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(".*Broadcast.*"), start_broadcast_prompt),
+            CallbackQueryHandler(start_broadcast_prompt, pattern="^admin_broadcast_prompt$")
+        ],
+        states={
+            WAITING_FOR_BROADCAST_CONTENT: [
+                MessageHandler(filters.ALL & ~filters.COMMAND, process_broadcast_content)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
+    )
+
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("admin", admin_panel_command))
     app.add_handler(CommandHandler("new", create_new_mail))
@@ -1570,6 +1582,13 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(CommandHandler("help", help_command))
 
     app.add_handler(MessageHandler(filters.Regex(".*(Admin Control|Admin Panel).*"), admin_panel_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Live Stats.*"), admin_stats_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Export Users List.*"), admin_export_users_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Banned Users.*"), show_banned_list_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Pending Payments.*"), admin_pending_payments_command))
+    app.add_handler(MessageHandler(filters.Regex(".*DB Backup.*"), admin_backup_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Back to User Menu.*"), back_to_user_menu_command))
+
     app.add_handler(MessageHandler(filters.Regex(".*Create Random Mail.*"), create_new_mail))
     app.add_handler(MessageHandler(filters.Regex(".*Saved Mails.*"), list_saved_mails))
     app.add_handler(MessageHandler(filters.Regex(".*Current Inbox.*"), current_inbox_command))
@@ -1577,19 +1596,6 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(MessageHandler(filters.Regex(".*Language.*"), toggle_language))
     app.add_handler(MessageHandler(filters.Regex(".*(My Profile|Profile).*"), my_profile_command))
     app.add_handler(MessageHandler(filters.Regex(".*Help.*"), help_command))
-
-    broadcast_conv = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(start_broadcast_prompt, pattern="^admin_broadcast_prompt$")
-        ],
-        states={
-            WAITING_FOR_BROADCAST_CONTENT: [
-                MessageHandler(filters.ALL & ~filters.COMMAND, process_broadcast_content)
-            ]
-        },
-        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
-        per_message=False
-    )
 
     app.add_handler(login_conv)
     app.add_handler(custom_conv)
