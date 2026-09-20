@@ -3,7 +3,7 @@ import sys
 import asyncio
 import logging
 from fastapi import FastAPI, Request, Response
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 
 # Add parent dir to path for imports

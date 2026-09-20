@@ -7,6 +7,7 @@ import os
 import io
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, InputFile
+from telegram.error import TelegramError, RetryAfter
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -641,11 +642,12 @@ async def my_profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
+        if update.message:
+            await update.message.reply_text("❌ Permission Denied: Admin only command.")
         return
 
     if not context.args:
-        await update.message.reply_text("❌ Usage: `/broadcast <your announcement message>`", parse_mode="Markdown")
-        return
+        return await start_broadcast_prompt(update, context)
 
     broadcast_text = " ".join(context.args)
     users = await db.get_all_users()
@@ -662,7 +664,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode="HTML"
             )
             success_count += 1
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.04)
         except Exception:
             failed_count += 1
 
@@ -817,7 +819,7 @@ async def process_ban_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     lang = await db.get_user_language(user_id)
 
-    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', raw_text) or raw_text.startswith("/"):
+    if is_menu_navigation(raw_text):
         return await cancel_and_route_menu(update, context)
 
     target_user = await db.find_user_by_identifier(raw_text)
@@ -854,7 +856,7 @@ async def process_unban_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ConversationHandler.END
     lang = await db.get_user_language(user_id)
 
-    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', raw_text) or raw_text.startswith("/"):
+    if is_menu_navigation(raw_text):
         return await cancel_and_route_menu(update, context)
 
     target_user = await db.find_user_by_identifier(raw_text)
@@ -891,7 +893,7 @@ async def process_vip_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     lang = await db.get_user_language(user_id)
 
-    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', raw_text) or raw_text.startswith("/"):
+    if is_menu_navigation(raw_text):
         return await cancel_and_route_menu(update, context)
 
     target_user = await db.find_user_by_identifier(raw_text)
@@ -938,7 +940,7 @@ async def process_sender_number_input(update: Update, context: ContextTypes.DEFA
     user_id = update.effective_user.id
     lang = await db.get_user_language(user_id)
 
-    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', sender_number) or sender_number.startswith("/"):
+    if is_menu_navigation(sender_number):
         return await cancel_and_route_menu(update, context)
 
     context.user_data["pay_sender_number"] = sender_number
@@ -953,7 +955,7 @@ async def process_trx_id_input(update: Update, context: ContextTypes.DEFAULT_TYP
     user = update.effective_user
     lang = await db.get_user_language(user_id)
 
-    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', trx_id) or trx_id.startswith("/"):
+    if is_menu_navigation(trx_id):
         return await cancel_and_route_menu(update, context)
 
     target_email = context.user_data.get("pay_target_email", "")
@@ -993,9 +995,12 @@ async def process_trx_id_input(update: Update, context: ContextTypes.DEFAULT_TYP
 async def start_broadcast_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
+        if update.message:
+            await update.message.reply_text("❌ Permission Denied: Admin only command.")
+        elif update.callback_query:
+            await update.callback_query.answer("❌ Permission Denied!", show_alert=True)
         return ConversationHandler.END
 
-    lang = await db.get_user_language(user_id)
     text = (
         "📢 <b>ব্রডকাস্ট মেসেজ পাঠাতে টাইপ করুন / মিডিয়ায় পাঠান</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1014,10 +1019,15 @@ async def start_broadcast_prompt(update: Update, context: ContextTypes.DEFAULT_T
 async def process_broadcast_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
+        if update.message:
+            await update.message.reply_text("❌ Permission Denied.")
         return ConversationHandler.END
 
     msg = update.message
-    if msg.text and (re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', msg.text) or msg.text.startswith("/")):
+    if not msg:
+        return ConversationHandler.END
+
+    if msg.text and is_menu_navigation(msg.text):
         return await cancel_and_route_menu(update, context)
 
     users = await db.get_all_users()
@@ -1030,7 +1040,7 @@ async def process_broadcast_content(update: Update, context: ContextTypes.DEFAUL
 
     for u_id in users:
         try:
-            if msg.text and ("<" in msg.text and ">" in msg.text):
+            if msg.text and ("<" in msg.text or ">" in msg.text):
                 try:
                     await context.bot.send_message(chat_id=u_id, text=msg.text, parse_mode="HTML", disable_web_page_preview=True)
                 except Exception:
@@ -1038,11 +1048,17 @@ async def process_broadcast_content(update: Update, context: ContextTypes.DEFAUL
             else:
                 await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
             success_count += 1
-            await asyncio.sleep(0.05)
-        except Exception:
+            await asyncio.sleep(0.04)
+        except RetryAfter as r_err:
+            await asyncio.sleep(r_err.retry_after)
+            try:
+                await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
+                success_count += 1
+            except Exception:
+                failed_count += 1
+        except Exception as ex:
+            logger.warning(f"Broadcast failed for user {u_id}: {ex}")
             failed_count += 1
-
-
 
     report_text = (
         f"🎉 <b>ব্রডকাস্ট সফলভাবে সম্পন্ন হয়েছে!</b>\n"
@@ -1408,6 +1424,20 @@ async def start_login_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     return WAITING_FOR_LOGIN_INPUT
 
+MENU_BUTTON_TEXTS = {
+    "Create Custom Mail", "Create Random Mail", "Saved Mails", "Current Inbox",
+    "Export TXT", "Login Account", "Restore Mail", "Language", "Help", "Admin",
+    "📊 Live Stats", "📄 Export Users List", "🚫 Ban User", "📋 Banned Users",
+    "💳 Pending Payments", "📢 Broadcast", "👑 Toggle VIP", "💾 DB Backup", "🔙 Back to User Menu", "2FA",
+    "🔑 2FA Authenticator", "👤 My Profile", "Profile", "Admin Control", "Admin Panel"
+}
+
+def is_menu_navigation(text: str) -> bool:
+    if not text:
+        return False
+    t = text.strip()
+    return t in MENU_BUTTON_TEXTS or t.startswith("/")
+
 async def cancel_and_route_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip() if update.message and update.message.text else ""
     if "Create Custom Mail" in text:
@@ -1455,7 +1485,7 @@ async def process_2fa_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         lang = await db.get_user_language(user_id)
 
-        if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|2FA)', raw_input) or raw_input.startswith("/"):
+        if is_menu_navigation(raw_input):
             return await cancel_and_route_menu(update, context)
 
         lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
@@ -1545,7 +1575,7 @@ async def process_login_input(update: Update, context: ContextTypes.DEFAULT_TYPE
     raw_input = update.message.text.strip()
     user_id = update.effective_user.id
 
-    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', raw_input) or raw_input.startswith("/"):
+    if is_menu_navigation(raw_input):
         return await cancel_and_route_menu(update, context)
 
     if ":" not in raw_input and " " not in raw_input:
@@ -1604,18 +1634,23 @@ async def direct_2fa_secret_handler(update: Update, context: ContextTypes.DEFAUL
     if not update.message or not update.message.text:
         return
     text = update.message.text.strip()
+    if len(text.splitlines()) > 1:
+        return
     clean_text = re.sub(r'[^A-Za-z2-7]', '', text.upper())
     if 15 <= len(clean_text) <= 64 and not text.startswith("/") and not re.search(r'(Create|Saved|Current|Export|Login|Restore|Language|Help|Admin|Profile|Cancel)', text, re.IGNORECASE):
         context.args = [text]
         return await fast_2fa_command(update, context)
 
+async def _post_init_hook(app: Application):
+    asyncio.create_task(auto_inbox_poller_task(app))
+
 def setup_bot_application(token: str) -> Application:
     from telegram.request import HTTPXRequest
     request = HTTPXRequest(connect_timeout=30.0, read_timeout=30.0)
-    app = Application.builder().token(token).request(request).build()
+    app = Application.builder().token(token).request(request).post_init(_post_init_hook).build()
 
     menu_fallback = MessageHandler(
-        filters.Regex(".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu|2FA).*"),
+        filters.Regex(r"^(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu|2FA|🔑 2FA Authenticator|👤 My Profile|Profile)$"),
         cancel_and_route_menu
     )
 
