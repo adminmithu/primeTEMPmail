@@ -33,6 +33,8 @@ WAITING_FOR_VIP_ID = 5
 WAITING_FOR_SENDER_NUMBER = 6
 WAITING_FOR_TRX_ID = 7
 WAITING_FOR_BROADCAST_CONTENT = 8
+WAITING_FOR_2FA_INPUT = 9
+
 
 def safe_html(text: str) -> str:
     return html.escape(str(text or ""))
@@ -89,6 +91,7 @@ def get_main_reply_keyboard(lang: str = "bn", user_id: int = None):
     rows = [
         [KeyboardButton(b("btn_create_custom"))],
         [KeyboardButton(b("btn_create_random"))],
+        [KeyboardButton(b("btn_2fa"))],
         [KeyboardButton(b("btn_saved_mails")), KeyboardButton(b("btn_current_inbox"))],
         [KeyboardButton(b("btn_export_txt")), KeyboardButton(b("btn_login"))],
         [KeyboardButton(b("btn_lang")), KeyboardButton(b("btn_profile")), KeyboardButton(b("btn_help"))]
@@ -96,6 +99,8 @@ def get_main_reply_keyboard(lang: str = "bn", user_id: int = None):
     if user_id and int(user_id) == ADMIN_ID:
         rows.append([KeyboardButton(b("btn_admin"))])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
 
 def get_admin_reply_keyboard(lang: str = "bn"):
     rows = [
@@ -1391,6 +1396,8 @@ async def cancel_and_route_menu(update: Update, context: ContextTypes.DEFAULT_TY
         await export_txt_command(update, context)
     elif "Login Account" in text or "Restore Mail" in text:
         return await start_login_prompt(update, context)
+    elif "2FA" in text or "2fa" in text:
+        return await start_2fa_prompt(update, context)
     elif "Language" in text:
         await toggle_language(update, context)
     elif "Profile" in text or "profile" in text:
@@ -1403,7 +1410,102 @@ async def cancel_and_route_menu(update: Update, context: ContextTypes.DEFAULT_TY
         await start_command(update, context)
     return ConversationHandler.END
 
+
+async def start_2fa_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = await db.get_user_language(user_id)
+    text = get_string(lang, "prompt_2fa")
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    return WAITING_FOR_2FA_INPUT
+
+async def process_2fa_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_input = update.message.text.strip()
+    user_id = update.effective_user.id
+    lang = await db.get_user_language(user_id)
+
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|2FA)', raw_input) or raw_input.startswith("/"):
+        return await cancel_and_route_menu(update, context)
+
+    lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
+    if not lines:
+        await update.message.reply_text("❌ Please enter a valid 2FA Secret Key.")
+        return WAITING_FOR_2FA_INPUT
+
+    results = []
+    inline_buttons = []
+
+    for idx, line in enumerate(lines, start=1):
+        parts = line.split("|")
+        secret = parts[0].strip()
+        code = email_parser.generate_totp_code(secret)
+        clean_sec = re.sub(r'[^A-Za-z2-7]', '', secret.upper())
+
+        if code.startswith("ERROR"):
+            results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec or secret)}</code> | ❌ <i>Invalid Secret</i>")
+        else:
+            results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec)}</code> | <code>{code}</code>")
+            inline_buttons.append([
+                InlineKeyboardButton(f"📋 {code}", api_kwargs={"copy_text": {"text": code}, "style": "success"}),
+                InlineKeyboardButton(f"🔑 {clean_sec[:12]}", api_kwargs={"copy_text": {"text": clean_sec}, "style": "primary"})
+            ])
+
+    output_text = (
+        "🔑 <b>2FA Authenticator Output</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+        "\n".join(results)
+    )
+
+    inline_buttons.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})])
+    reply_markup = InlineKeyboardMarkup(inline_buttons)
+
+    await update.message.reply_text(output_text, parse_mode="HTML", reply_markup=reply_markup)
+    return ConversationHandler.END
+
+async def fast_2fa_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = await db.get_user_language(user_id)
+
+    if not context.args:
+        return await start_2fa_prompt(update, context)
+
+    raw_input = " ".join(context.args).strip()
+    lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
+    results = []
+    inline_buttons = []
+
+    for idx, line in enumerate(lines, start=1):
+        parts = line.split("|")
+        secret = parts[0].strip()
+        code = email_parser.generate_totp_code(secret)
+        clean_sec = re.sub(r'[^A-Za-z2-7]', '', secret.upper())
+
+        if code.startswith("ERROR"):
+            results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec or secret)}</code> | ❌ <i>Invalid Secret</i>")
+        else:
+            results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec)}</code> | <code>{code}</code>")
+            inline_buttons.append([
+                InlineKeyboardButton(f"📋 {code}", api_kwargs={"copy_text": {"text": code}, "style": "success"}),
+                InlineKeyboardButton(f"🔑 {clean_sec[:12]}", api_kwargs={"copy_text": {"text": clean_sec}, "style": "primary"})
+            ])
+
+    output_text = (
+        "🔑 <b>2FA Authenticator Output</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+        "\n".join(results)
+    )
+    inline_buttons.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})])
+    reply_markup = InlineKeyboardMarkup(inline_buttons)
+
+    await update.message.reply_text(output_text, parse_mode="HTML", reply_markup=reply_markup)
+
+
 async def process_login_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     raw_input = update.message.text.strip()
     user_id = update.effective_user.id
 
@@ -1570,6 +1672,21 @@ def setup_bot_application(token: str) -> Application:
         per_message=False
     )
 
+    totp_2fa_conv = ConversationHandler(
+        entry_points=[
+            CommandHandler("2fa", fast_2fa_command),
+            MessageHandler(filters.Regex(".*2FA Authenticator.*"), start_2fa_prompt),
+            CallbackQueryHandler(start_2fa_prompt, pattern="^start_2fa_prompt$")
+        ],
+        states={
+            WAITING_FOR_2FA_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_2fa_input)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
+    )
+
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("admin", admin_panel_command))
     app.add_handler(CommandHandler("new", create_new_mail))
@@ -1580,6 +1697,7 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(CommandHandler("backup", admin_backup_command))
     app.add_handler(CommandHandler("profile", my_profile_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("2fa", fast_2fa_command))
 
     app.add_handler(MessageHandler(filters.Regex(".*(Admin Control|Admin Panel).*"), admin_panel_command))
     app.add_handler(MessageHandler(filters.Regex(".*Live Stats.*"), admin_stats_command))
@@ -1596,6 +1714,7 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(MessageHandler(filters.Regex(".*Language.*"), toggle_language))
     app.add_handler(MessageHandler(filters.Regex(".*(My Profile|Profile).*"), my_profile_command))
     app.add_handler(MessageHandler(filters.Regex(".*Help.*"), help_command))
+    app.add_handler(MessageHandler(filters.Regex(".*2FA Authenticator.*"), start_2fa_prompt))
 
     app.add_handler(login_conv)
     app.add_handler(custom_conv)
@@ -1604,6 +1723,8 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(vip_conv)
     app.add_handler(payment_conv)
     app.add_handler(broadcast_conv)
+    app.add_handler(totp_2fa_conv)
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     return app
+

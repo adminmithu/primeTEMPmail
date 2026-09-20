@@ -33,10 +33,21 @@ STRINGS = {
         "btn_current_inbox": "📥 Current Inbox",
         "btn_login": "🔐 Login Account",
         "btn_export_txt": "📁 Export TXT",
+        "btn_2fa": "🔑 2FA Authenticator",
         "btn_lang": "🌐 Language / ভাষা",
         "btn_profile": "👤 My Profile",
         "btn_help": "❓ Help",
         "btn_admin": "👑 Admin Control",
+        "prompt_2fa": (
+            "🔑 <b>2FA Authenticator (TOTP Code Generator)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>আপনার <b>2FA Secret Key</b> টি নিচে পেস্ট করুন।\n"
+            "<i>(একাধিক সিক্রেট কি থাকলে প্রতি লাইনে ১টি করে পেস্ট করতে পারেন)</i>\n\n"
+            "<b>উদাহরণ:</b>\n"
+            "<code>JBSWY3DPEHPK3PXP</code></blockquote>\n\n"
+            "🚫 বাতিল করতে /cancel টাইপ করুন।"
+        ),
+
         "admin_panel_title": (
             "👑 <b>Admin Control Panel</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -248,10 +259,21 @@ STRINGS = {
         "btn_current_inbox": "📥 Current Inbox",
         "btn_login": "🔐 Login Account",
         "btn_export_txt": "📁 Export TXT",
+        "btn_2fa": "🔑 2FA Authenticator",
         "btn_lang": "🌐 Language / ভাষা",
         "btn_profile": "👤 My Profile",
         "btn_help": "❓ Help",
         "btn_admin": "👑 Admin Control",
+        "prompt_2fa": (
+            "🔑 <b>2FA Authenticator (TOTP Code Generator)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>Paste your <b>2FA Secret Key(s)</b> below.\n"
+            "<i>(If you have multiple keys, paste them 1 per line)</i>\n\n"
+            "<b>Example:</b>\n"
+            "<code>JBSWY3DPEHPK3PXP</code></blockquote>\n\n"
+            "Type /cancel to abort."
+        ),
+
         "admin_panel_title": (
             "👑 <b>Admin Control Panel</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"

@@ -57,3 +57,42 @@ def extract_urls(text: str) -> list:
         if u not in unique_urls and not any(ext in u.lower() for ext in ['.png', '.jpg', '.jpeg', '.gif', '.css', '.js']):
             unique_urls.append(u)
     return unique_urls[:5] # return top 5 links
+
+
+def generate_totp_code(secret: str) -> str:
+    """Generate 6-digit TOTP authentication code from a base32 secret key."""
+    import base64
+    import hmac
+    import hashlib
+    import struct
+    import time
+    
+    if not secret:
+        return "ERROR: Empty Secret"
+    
+    # Clean whitespace, hyphens, and invalid characters
+    clean_secret = re.sub(r'[^A-Za-z2-7]', '', secret.upper())
+    if not clean_secret:
+        return "ERROR: Invalid Secret"
+    
+    # Add base32 padding if missing
+    missing_padding = len(clean_secret) % 8
+    if missing_padding != 0:
+        clean_secret += '=' * (8 - missing_padding)
+        
+    try:
+        key = base64.b32decode(clean_secret, casefold=True)
+    except Exception:
+        return "ERROR: Invalid Secret"
+    
+    try:
+        counter = int(time.time() // 30)
+        msg = struct.pack(">Q", counter)
+        mac = hmac.new(key, msg, hashlib.sha1).digest()
+        offset = mac[-1] & 0x0F
+        binary = struct.unpack(">I", mac[offset:offset+4])[0] & 0x7FFFFFFF
+        otp = binary % 1000000
+        return f"{otp:06d}"
+    except Exception as e:
+        return f"ERROR: {str(e)}"
+
