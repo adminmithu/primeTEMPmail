@@ -89,28 +89,28 @@ def generate_secure_password(length=12):
 def get_main_reply_keyboard(lang: str = "bn", user_id: int = None):
     b = lambda key: get_string(lang, key)
     rows = [
-        [KeyboardButton(b("btn_create_custom"))],
-        [KeyboardButton(b("btn_create_random"))],
-        [KeyboardButton(b("btn_2fa"))],
-        [KeyboardButton(b("btn_saved_mails")), KeyboardButton(b("btn_current_inbox"))],
-        [KeyboardButton(b("btn_export_txt")), KeyboardButton(b("btn_login"))],
-        [KeyboardButton(b("btn_lang")), KeyboardButton(b("btn_profile")), KeyboardButton(b("btn_help"))]
+        [KeyboardButton(b("btn_create_custom"), api_kwargs={"style": "primary"})],
+        [KeyboardButton(b("btn_create_random"), api_kwargs={"style": "success"})],
+        [KeyboardButton(b("btn_2fa"), api_kwargs={"style": "primary"})],
+        [KeyboardButton(b("btn_saved_mails"), api_kwargs={"style": "primary"}), KeyboardButton(b("btn_current_inbox"), api_kwargs={"style": "success"})],
+        [KeyboardButton(b("btn_export_txt"), api_kwargs={"style": "primary"}), KeyboardButton(b("btn_login"), api_kwargs={"style": "primary"})],
+        [KeyboardButton(b("btn_lang"), api_kwargs={"style": "primary"}), KeyboardButton(b("btn_profile"), api_kwargs={"style": "primary"}), KeyboardButton(b("btn_help"), api_kwargs={"style": "primary"})]
     ]
     if user_id and int(user_id) == ADMIN_ID:
-        rows.append([KeyboardButton(b("btn_admin"))])
+        rows.append([KeyboardButton(b("btn_admin"), api_kwargs={"style": "danger"})])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
-
 
 
 def get_admin_reply_keyboard(lang: str = "bn"):
     rows = [
-        [KeyboardButton("📊 Live Stats"), KeyboardButton("📄 Export Users List")],
-        [KeyboardButton("🚫 Ban User"), KeyboardButton("📋 Banned Users")],
-        [KeyboardButton("💳 Pending Payments"), KeyboardButton("📢 Broadcast")],
-        [KeyboardButton("👑 Toggle VIP"), KeyboardButton("💾 DB Backup")],
-        [KeyboardButton("🔙 Back to User Menu")]
+        [KeyboardButton("📊 Live Stats", api_kwargs={"style": "primary"}), KeyboardButton("📄 Export Users List", api_kwargs={"style": "primary"})],
+        [KeyboardButton("🚫 Ban User", api_kwargs={"style": "danger"}), KeyboardButton("📋 Banned Users", api_kwargs={"style": "danger"})],
+        [KeyboardButton("💳 Pending Payments", api_kwargs={"style": "success"}), KeyboardButton("📢 Broadcast", api_kwargs={"style": "primary"})],
+        [KeyboardButton("👑 Toggle VIP", api_kwargs={"style": "success"}), KeyboardButton("💾 DB Backup", api_kwargs={"style": "primary"})],
+        [KeyboardButton("🔙 Back to User Menu", api_kwargs={"style": "primary"})]
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -1424,84 +1424,93 @@ async def start_2fa_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return WAITING_FOR_2FA_INPUT
 
 async def process_2fa_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    raw_input = update.message.text.strip()
-    user_id = update.effective_user.id
-    lang = await db.get_user_language(user_id)
+    try:
+        raw_input = update.message.text.strip()
+        user_id = update.effective_user.id
+        lang = await db.get_user_language(user_id)
 
-    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|2FA)', raw_input) or raw_input.startswith("/"):
-        return await cancel_and_route_menu(update, context)
+        if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|2FA)', raw_input) or raw_input.startswith("/"):
+            return await cancel_and_route_menu(update, context)
 
-    lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
-    if not lines:
-        await update.message.reply_text("❌ Please enter a valid 2FA Secret Key.")
-        return WAITING_FOR_2FA_INPUT
+        lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
+        if not lines:
+            await update.message.reply_text("❌ Please enter a valid 2FA Secret Key.")
+            return WAITING_FOR_2FA_INPUT
 
-    results = []
-    inline_buttons = []
+        results = []
+        inline_buttons = []
 
-    for idx, line in enumerate(lines, start=1):
-        parts = line.split("|")
-        secret = parts[0].strip()
-        code = email_parser.generate_totp_code(secret)
-        clean_sec = re.sub(r'[^A-Za-z2-7]', '', secret.upper())
+        for idx, line in enumerate(lines, start=1):
+            parts = line.split("|")
+            secret = parts[0].strip()
+            code = email_parser.generate_totp_code(secret)
+            clean_sec = re.sub(r'[^A-Za-z2-7]', '', secret.upper())
 
-        if code.startswith("ERROR"):
-            results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec or secret)}</code> | ❌ <i>Invalid Secret</i>")
-        else:
-            results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec)}</code> | <code>{code}</code>")
-            inline_buttons.append([
-                InlineKeyboardButton(f"📋 {code}", api_kwargs={"copy_text": {"text": code}, "style": "success"}),
-                InlineKeyboardButton(f"🔑 {clean_sec[:12]}", api_kwargs={"copy_text": {"text": clean_sec}, "style": "primary"})
-            ])
+            if code.startswith("ERROR"):
+                results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec or secret)}</code> | ❌ <i>Invalid Secret</i>")
+            else:
+                results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec)}</code> | <code>{code}</code>")
+                inline_buttons.append([
+                    InlineKeyboardButton(f"📋 {code}", callback_data=f"copy_otp:{code}", api_kwargs={"style": "success"}),
+                    InlineKeyboardButton(f"🔑 {clean_sec[:12]}", callback_data=f"copy_otp:{clean_sec}", api_kwargs={"style": "primary"})
+                ])
 
-    output_text = (
-        "🔑 <b>2FA Authenticator Output</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n" +
-        "\n".join(results)
-    )
+        output_text = (
+            "🔑 <b>2FA Authenticator Output</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+            "\n".join(results)
+        )
 
-    inline_buttons.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})])
-    reply_markup = InlineKeyboardMarkup(inline_buttons)
+        inline_buttons.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})])
+        reply_markup = InlineKeyboardMarkup(inline_buttons)
 
-    await update.message.reply_text(output_text, parse_mode="HTML", reply_markup=reply_markup)
+        await update.message.reply_text(output_text, parse_mode="HTML", reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Error in process_2fa_input: {e}")
+        await update.message.reply_text(f"❌ Error generating 2FA code: {safe_html(str(e))}")
     return ConversationHandler.END
 
 async def fast_2fa_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    lang = await db.get_user_language(user_id)
+    try:
+        user_id = update.effective_user.id
+        lang = await db.get_user_language(user_id)
 
-    if not context.args:
-        return await start_2fa_prompt(update, context)
+        if not context.args:
+            return await start_2fa_prompt(update, context)
 
-    raw_input = " ".join(context.args).strip()
-    lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
-    results = []
-    inline_buttons = []
+        raw_input = " ".join(context.args).strip()
+        lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
+        results = []
+        inline_buttons = []
 
-    for idx, line in enumerate(lines, start=1):
-        parts = line.split("|")
-        secret = parts[0].strip()
-        code = email_parser.generate_totp_code(secret)
-        clean_sec = re.sub(r'[^A-Za-z2-7]', '', secret.upper())
+        for idx, line in enumerate(lines, start=1):
+            parts = line.split("|")
+            secret = parts[0].strip()
+            code = email_parser.generate_totp_code(secret)
+            clean_sec = re.sub(r'[^A-Za-z2-7]', '', secret.upper())
 
-        if code.startswith("ERROR"):
-            results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec or secret)}</code> | ❌ <i>Invalid Secret</i>")
-        else:
-            results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec)}</code> | <code>{code}</code>")
-            inline_buttons.append([
-                InlineKeyboardButton(f"📋 {code}", api_kwargs={"copy_text": {"text": code}, "style": "success"}),
-                InlineKeyboardButton(f"🔑 {clean_sec[:12]}", api_kwargs={"copy_text": {"text": clean_sec}, "style": "primary"})
-            ])
+            if code.startswith("ERROR"):
+                results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec or secret)}</code> | ❌ <i>Invalid Secret</i>")
+            else:
+                results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec)}</code> | <code>{code}</code>")
+                inline_buttons.append([
+                    InlineKeyboardButton(f"📋 {code}", callback_data=f"copy_otp:{code}", api_kwargs={"style": "success"}),
+                    InlineKeyboardButton(f"🔑 {clean_sec[:12]}", callback_data=f"copy_otp:{clean_sec}", api_kwargs={"style": "primary"})
+                ])
 
-    output_text = (
-        "🔑 <b>2FA Authenticator Output</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n" +
-        "\n".join(results)
-    )
-    inline_buttons.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})])
-    reply_markup = InlineKeyboardMarkup(inline_buttons)
+        output_text = (
+            "🔑 <b>2FA Authenticator Output</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+            "\n".join(results)
+        )
+        inline_buttons.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})])
+        reply_markup = InlineKeyboardMarkup(inline_buttons)
 
-    await update.message.reply_text(output_text, parse_mode="HTML", reply_markup=reply_markup)
+        await update.message.reply_text(output_text, parse_mode="HTML", reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Error in fast_2fa_command: {e}")
+        await update.message.reply_text(f"❌ Error generating 2FA code: {safe_html(str(e))}")
+
 
 
 async def process_login_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
