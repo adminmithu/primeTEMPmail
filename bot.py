@@ -64,20 +64,18 @@ def generate_professional_username():
         kw = random.choice(KEYWORDS)
         num = random.randint(10, 999)
         
-        style = random.choice([1, 2, 3, 4, 5])
+        style = random.choice([1, 2, 3])
         if style == 1:
-            u = f"{fn}.{ln[:4]}{num}"
+            u = f"{fn}{ln[:4]}{num}"
         elif style == 2:
-            u = f"{fn}_{ln[:4]}{num}"
-        elif style == 3:
             u = f"{fn[:5]}{ln[:5]}{num}"
-        elif style == 4:
-            u = f"{fn}.{kw}{num}"
         else:
-            u = f"{fn}_{kw}{num}"
+            u = f"{fn}{kw}{num}"
         
+        u = re.sub(r'[^a-z0-9]', '', u.lower())
         if 4 <= len(u) <= 15:
             return u
+
 
 def generate_random_string(length=8):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
@@ -147,10 +145,11 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
 
         selected_domain = domains[0]
         if custom_name:
-            clean_name = re.sub(r'[^a-zA-Z0-9._-]', '', custom_name).lower()[:15]
+            clean_name = re.sub(r'[^a-z0-9]', '', custom_name).lower()[:15]
             if len(clean_name) < 3:
                 clean_name = f"{clean_name}{generate_random_string(4)}"
             full_email = f"{clean_name}@{selected_domain}"
+
         else:
             random_username = generate_professional_username()
             full_email = f"{random_username}@{selected_domain}"
@@ -1576,14 +1575,39 @@ async def back_to_user_menu_command(update: Update, context: ContextTypes.DEFAUL
         reply_markup=get_main_reply_keyboard(lang, user_id)
     )
 
+async def direct_2fa_secret_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Direct handler for any pasted 2FA secret key in chat without prompt."""
+    if not update.message or not update.message.text:
+        return
+    text = update.message.text.strip()
+    clean_text = re.sub(r'[^A-Za-z2-7]', '', text.upper())
+    if 15 <= len(clean_text) <= 64 and not text.startswith("/") and not re.search(r'(Create|Saved|Current|Export|Login|Restore|Language|Help|Admin|Profile|Cancel)', text, re.IGNORECASE):
+        context.args = [text]
+        return await fast_2fa_command(update, context)
+
 def setup_bot_application(token: str) -> Application:
     from telegram.request import HTTPXRequest
     request = HTTPXRequest(connect_timeout=30.0, read_timeout=30.0)
     app = Application.builder().token(token).request(request).build()
 
     menu_fallback = MessageHandler(
-        filters.Regex(".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu).*"),
+        filters.Regex(".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu|2FA).*"),
         cancel_and_route_menu
+    )
+
+    totp_2fa_conv = ConversationHandler(
+        entry_points=[
+            CommandHandler("2fa", fast_2fa_command),
+            MessageHandler(filters.Regex(".*2FA Authenticator.*"), start_2fa_prompt),
+            CallbackQueryHandler(start_2fa_prompt, pattern="^start_2fa_prompt$")
+        ],
+        states={
+            WAITING_FOR_2FA_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_2fa_input)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
     )
 
     login_conv = ConversationHandler(
@@ -1685,21 +1709,6 @@ def setup_bot_application(token: str) -> Application:
         per_message=False
     )
 
-    totp_2fa_conv = ConversationHandler(
-        entry_points=[
-            CommandHandler("2fa", fast_2fa_command),
-            MessageHandler(filters.Regex(".*2FA Authenticator.*"), start_2fa_prompt),
-            CallbackQueryHandler(start_2fa_prompt, pattern="^start_2fa_prompt$")
-        ],
-        states={
-            WAITING_FOR_2FA_INPUT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, process_2fa_input)
-            ]
-        },
-        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
-        per_message=False
-    )
-
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("admin", admin_panel_command))
     app.add_handler(CommandHandler("new", create_new_mail))
@@ -1711,6 +1720,15 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(CommandHandler("profile", my_profile_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("2fa", fast_2fa_command))
+
+    app.add_handler(totp_2fa_conv)
+    app.add_handler(login_conv)
+    app.add_handler(custom_conv)
+    app.add_handler(ban_conv)
+    app.add_handler(unban_conv)
+    app.add_handler(vip_conv)
+    app.add_handler(payment_conv)
+    app.add_handler(broadcast_conv)
 
     app.add_handler(MessageHandler(filters.Regex(".*(Admin Control|Admin Panel).*"), admin_panel_command))
     app.add_handler(MessageHandler(filters.Regex(".*Live Stats.*"), admin_stats_command))
@@ -1727,17 +1745,11 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(MessageHandler(filters.Regex(".*Language.*"), toggle_language))
     app.add_handler(MessageHandler(filters.Regex(".*(My Profile|Profile).*"), my_profile_command))
     app.add_handler(MessageHandler(filters.Regex(".*Help.*"), help_command))
-    app.add_handler(MessageHandler(filters.Regex(".*2FA Authenticator.*"), start_2fa_prompt))
 
-    app.add_handler(login_conv)
-    app.add_handler(custom_conv)
-    app.add_handler(ban_conv)
-    app.add_handler(unban_conv)
-    app.add_handler(vip_conv)
-    app.add_handler(payment_conv)
-    app.add_handler(broadcast_conv)
-    app.add_handler(totp_2fa_conv)
+    # Direct 2FA Secret Key Auto-Detector Handler
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, direct_2fa_secret_handler))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     return app
+
 
