@@ -31,6 +31,8 @@ async def get_ptb_app() -> Application:
         await ptb_app.initialize()
     return ptb_app
 
+import re
+
 @app.get("/")
 async def root_index(request: Request):
     """Root route - Health Check and Auto Set Telegram Webhook."""
@@ -41,9 +43,13 @@ async def root_index(request: Request):
     
     bot_app = await get_ptb_app()
     webhook_set = False
+    
+    # Telegram secret_token only allows A-Z, a-z, 0-9, _, -
+    clean_secret = re.sub(r'[^A-Za-z0-9_-]', '', WEBHOOK_SECRET) if WEBHOOK_SECRET else None
+    
     try:
-        if WEBHOOK_SECRET:
-            webhook_set = await bot_app.bot.set_webhook(webhook_url, secret_token=WEBHOOK_SECRET)
+        if clean_secret:
+            webhook_set = await bot_app.bot.set_webhook(webhook_url, secret_token=clean_secret)
         else:
             webhook_set = await bot_app.bot.set_webhook(webhook_url)
     except Exception as e:
@@ -59,13 +65,15 @@ async def root_index(request: Request):
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):
     """Telegram Webhook handler endpoint for Vercel Serverless."""
-    if WEBHOOK_SECRET:
+    clean_secret = re.sub(r'[^A-Za-z0-9_-]', '', WEBHOOK_SECRET) if WEBHOOK_SECRET else None
+    if clean_secret:
         incoming_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        if incoming_secret != WEBHOOK_SECRET:
+        if incoming_secret != clean_secret:
             logger.warning("Unauthorized webhook request received with invalid secret token.")
             return Response(status_code=403, content="Forbidden: Invalid secret token")
 
     bot_app = await get_ptb_app()
+
     try:
         data = await request.json()
         update = Update.de_json(data, bot_app.bot)
