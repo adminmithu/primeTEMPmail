@@ -1240,11 +1240,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await read_full_message(update, context, email, msg_id)
     elif data.startswith("copy_otp:"):
         otp_code = data.split(":", 1)[1]
-        await query.answer(f"✅ OTP Code: {otp_code}", show_alert=False)
-        await query.message.reply_text(
-            f"⚡ <b>OTP Code:</b> <code>{safe_html(otp_code)}</code>\n<i>(Tap code above to copy instantly!)</i>",
-            parse_mode="HTML"
-        )
+        await query.answer(f"📋 Copied: {otp_code}", show_alert=True)
+    elif data.startswith("del_msg:"):
+        parts = data.split(":", 2)
+        email = parts[1]
+        msg_id = parts[2]
+        user_id = update.effective_user.id
+        acc = await db.get_account(user_id, email)
+        if acc and acc.get("token"):
+            try:
+                await mail_api.delete_message(acc["token"], msg_id)
+            except Exception:
+                pass
+        await query.answer("🗑️ Message deleted!", show_alert=True)
+        await switch_account_and_view_inbox(update, context, email)
     elif data == "confirm_del_all":
         kb = [
             [
@@ -1288,11 +1297,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         email = data.split(":", 1)[1]
         user_id = update.effective_user.id
         acc = await db.get_account(user_id, email)
-        if acc and acc.get("token") and acc.get("account_id"):
+        if acc:
+            await db.delete_saved_account(user_id, email)
+            if acc.get("token") and acc.get("account_id"):
+                try:
+                    await mail_api.delete_account(acc["token"], acc["account_id"])
+                except Exception:
+                    pass
+            await query.answer("🗑️ Email deleted successfully!", show_alert=True)
             try:
-                await mail_api.delete_account(acc["token"], acc["account_id"])
+                await query.message.edit_text(f"🗑️ <b>Email Address <code>{safe_html(email)}</code> has been deleted!</b>", parse_mode="HTML")
             except Exception:
                 pass
+        else:
+            await query.answer("❌ Email not found in saved list!", show_alert=True)
+
     elif data.startswith("extend_mail:"):
         email = data.split(":", 1)[1]
         user_id = update.effective_user.id
