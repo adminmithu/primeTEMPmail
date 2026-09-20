@@ -1030,14 +1030,18 @@ async def process_broadcast_content(update: Update, context: ContextTypes.DEFAUL
 
     for u_id in users:
         try:
-            if msg.text:
-                await context.bot.send_message(chat_id=u_id, text=msg.text, parse_mode="HTML", disable_web_page_preview=True)
+            if msg.text and ("<" in msg.text and ">" in msg.text):
+                try:
+                    await context.bot.send_message(chat_id=u_id, text=msg.text, parse_mode="HTML", disable_web_page_preview=True)
+                except Exception:
+                    await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
             else:
                 await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
             success_count += 1
             await asyncio.sleep(0.05)
         except Exception:
             failed_count += 1
+
 
 
     report_text = (

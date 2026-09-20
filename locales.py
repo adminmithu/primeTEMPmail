@@ -41,12 +41,12 @@ STRINGS = {
         "prompt_2fa": (
             "🔑 <b>2FA Authenticator (TOTP Code Generator)</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<blockquote>আপনার <b>2FA Secret Key</b> টি নিচে পেস্ট করুন।\n"
+            "আপনার <b>2FA Secret Key</b> টি নিচে পেস্ট করুন।\n"
             "<i>(একাধিক সিক্রেট কি থাকলে প্রতি লাইনে ১টি করে পেস্ট করতে পারেন)</i>\n\n"
-            "<b>উদাহরণ:</b>\n"
-            "<code>JBSWY3DPEHPK3PXP</code></blockquote>\n\n"
+            "📌 <b>উদাহরণ:</b> <code>JBSWY3DPEHPK3PXP</code>\n\n"
             "🚫 বাতিল করতে /cancel টাইপ করুন।"
         ),
+
 
         "admin_panel_title": (
             "👑 <b>Admin Control Panel</b>\n"
@@ -267,12 +267,12 @@ STRINGS = {
         "prompt_2fa": (
             "🔑 <b>2FA Authenticator (TOTP Code Generator)</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<blockquote>Paste your <b>2FA Secret Key(s)</b> below.\n"
+            "Paste your <b>2FA Secret Key(s)</b> below.\n"
             "<i>(If you have multiple keys, paste them 1 per line)</i>\n\n"
-            "<b>Example:</b>\n"
-            "<code>JBSWY3DPEHPK3PXP</code></blockquote>\n\n"
+            "📌 <b>Example:</b> <code>JBSWY3DPEHPK3PXP</code>\n\n"
             "Type /cancel to abort."
         ),
+
 
         "admin_panel_title": (
             "👑 <b>Admin Control Panel</b>\n"
