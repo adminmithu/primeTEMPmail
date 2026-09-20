@@ -27,6 +27,12 @@ logger = logging.getLogger(__name__)
 
 WAITING_FOR_LOGIN_INPUT = 1
 WAITING_FOR_CUSTOM_NAME = 2
+WAITING_FOR_BAN_ID = 3
+WAITING_FOR_UNBAN_ID = 4
+WAITING_FOR_VIP_ID = 5
+WAITING_FOR_SENDER_NUMBER = 6
+WAITING_FOR_TRX_ID = 7
+WAITING_FOR_BROADCAST_CONTENT = 8
 
 def safe_html(text: str) -> str:
     return html.escape(str(text or ""))
@@ -78,27 +84,35 @@ def generate_secure_password(length=12):
     chars = string.ascii_letters + string.digits
     return "Pass" + ''.join(random.choices(chars, k=length - 4))
 
-def get_main_reply_keyboard(lang: str = "bn"):
+def get_main_reply_keyboard(lang: str = "bn", user_id: int = None):
     b = lambda key: get_string(lang, key)
+    rows = [
+        [{"text": b("btn_create_custom"), "style": "success"}],
+        [{"text": b("btn_create_random"), "style": "primary"}],
+        [{"text": b("btn_saved_mails"), "style": "primary"}, {"text": b("btn_current_inbox"), "style": "primary"}],
+        [{"text": b("btn_export_txt"), "style": "primary"}, {"text": b("btn_login"), "style": "danger"}],
+        [{"text": b("btn_lang"), "style": "primary"}, {"text": b("btn_profile"), "style": "primary"}, {"text": b("btn_help"), "style": "primary"}]
+    ]
+    if user_id and int(user_id) == ADMIN_ID:
+        rows.append([{"text": b("btn_admin"), "style": "danger"}])
     return {
-        "keyboard": [
-            [{"text": b("btn_create_custom"), "style": "success"}],
-            [{"text": b("btn_create_random"), "style": "primary"}],
-            [{"text": b("btn_saved_mails"), "style": "primary"}, {"text": b("btn_current_inbox"), "style": "primary"}],
-            [{"text": b("btn_export_txt"), "style": "primary"}, {"text": b("btn_login"), "style": "danger"}],
-            [{"text": b("btn_lang"), "style": "primary"}, {"text": b("btn_help"), "style": "primary"}]
-        ],
+        "keyboard": rows,
         "resize_keyboard": True
     }
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    await db.register_user(user.id, user.username, user.first_name)
     lang = await db.get_user_language(user.id)
+    if await db.is_user_banned(user.id):
+        await update.message.reply_text(get_string(lang, "user_banned_notice"), parse_mode="HTML")
+        return
+
     welcome_text = get_string(lang, "welcome", name=safe_html(user.first_name))
     await update.message.reply_text(
         welcome_text,
         parse_mode="HTML",
-        reply_markup=get_main_reply_keyboard(lang)
+        reply_markup=get_main_reply_keyboard(lang, user.id)
     )
 
 async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, custom_name: str = None):
@@ -201,11 +215,23 @@ async def list_saved_mails(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for acc in accounts:
             email = acc["email"]
-            status_badge = "[🟢 Active]" if email == active_email else ""
-            status_text = "🟢 (Active)" if email == active_email else ""
+            exp_status, exp_dt = db.check_account_expiry_status(acc)
+            if exp_status == "expired":
+                status_badge = "[🔒 Expired]"
+                status_text = "🔒 (Expired - Locked)"
+            elif exp_status == "overdue_delete":
+                status_badge = "[🗑️ Overdue]"
+                status_text = "🗑️ (Overdue)"
+            elif email == active_email:
+                status_badge = "[🟢 Active]"
+                status_text = "🟢 (Active)"
+            else:
+                status_badge = ""
+                status_text = ""
+
             text += f"• <code>{safe_html(email)}</code> {status_text}\n"
             btn_label = f"📧 {email} {status_badge}".strip()
-            style_type = "success" if email == active_email else "primary"
+            style_type = "danger" if exp_status in ("expired", "overdue_delete") else ("success" if email == active_email else "primary")
             keyboard.append([InlineKeyboardButton(btn_label, callback_data=f"switch:{email}", api_kwargs={"style": style_type})])
         
         keyboard.append([
@@ -236,6 +262,41 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
 
     if not acc:
         if query: await query.answer("Account not found!", show_alert=True)
+        return
+
+    # Check expiry status
+    exp_status, exp_dt = db.check_account_expiry_status(acc)
+    if exp_status == "overdue_delete":
+        # Over 5 days late past expiry -> Delete permanently from DB & Supabase!
+        await db.delete_saved_account(user_id, target_email)
+        if acc.get("token") and acc.get("account_id"):
+            try:
+                await mail_api.delete_account(acc["token"], acc["account_id"])
+            except Exception:
+                pass
+        
+        del_msg = get_string(lang, "email_overdue_deleted_notice", email=safe_html(target_email))
+        if query:
+            await query.answer("🗑️ Email permanently deleted due to 5 days overdue payment!", show_alert=True)
+            await query.message.reply_text(del_msg, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
+        else:
+            await update.message.reply_text(del_msg, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
+        return
+
+    elif exp_status == "expired":
+        # Expired (within 5 days grace period) -> Lock inbox & hide messages!
+        exp_str = exp_dt.strftime("%Y-%m-%d %H:%M:%S") if exp_dt else "N/A"
+        lock_msg = get_string(lang, "email_expired_locked_notice", expires_at=exp_str)
+        kb = [
+            [InlineKeyboardButton("🎁 Renew / Extend 2 Months", callback_data=f"extend_mail:{target_email}", api_kwargs={"style": "success"})],
+            [InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})],
+            [InlineKeyboardButton("🗑️ Delete Email", callback_data=f"del_acc:{target_email}", api_kwargs={"style": "danger"})]
+        ]
+        if query:
+            await query.answer("🔒 Inbox locked! Please extend validity to view messages.", show_alert=True)
+            await query.message.reply_text(lock_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await update.message.reply_text(lock_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
         return
 
     token = acc.get("token")
@@ -269,10 +330,13 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
         keyboard = [
             [
                 InlineKeyboardButton("🔄 Refresh Inbox", callback_data=f"inbox:{target_email}", api_kwargs={"style": "success"}),
-                InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})
+                InlineKeyboardButton("🎁 Extend 2 Months", callback_data=f"extend_mail:{target_email}", api_kwargs={"style": "primary"})
             ],
             [
                 InlineKeyboardButton("🔑 Credentials", callback_data=f"show_creds:{target_email}", api_kwargs={"style": "primary"}),
+                InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})
+            ],
+            [
                 InlineKeyboardButton("🗑️ Delete Email", callback_data=f"del_acc:{target_email}", api_kwargs={"style": "danger"})
             ]
         ]
@@ -305,14 +369,14 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
 
         keyboard.append([
             InlineKeyboardButton("🔄 Refresh Inbox", callback_data=f"inbox:{target_email}", api_kwargs={"style": "success"}),
-            InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})
+            InlineKeyboardButton("🎁 Extend 2 Months", callback_data=f"extend_mail:{target_email}", api_kwargs={"style": "primary"})
         ])
         keyboard.append([
             InlineKeyboardButton("🔑 Credentials", callback_data=f"show_creds:{target_email}", api_kwargs={"style": "primary"}),
-            InlineKeyboardButton("🗑️ Delete Email", callback_data=f"del_acc:{target_email}", api_kwargs={"style": "danger"})
+            InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})
         ])
         keyboard.append([
-            InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})
+            InlineKeyboardButton("🗑️ Delete Email", callback_data=f"del_acc:{target_email}", api_kwargs={"style": "danger"})
         ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -325,12 +389,18 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
 async def read_full_message(update: Update, context: ContextTypes.DEFAULT_TYPE, email: str, msg_id: str):
     user_id = update.effective_user.id
     query = update.callback_query
-    await query.answer("Loading message...")
 
     acc = await db.get_account(user_id, email)
     if not acc or not acc.get("token"):
-        await query.message.edit_text("❌ Session error!")
+        if query: await query.answer("Session error!", show_alert=True)
         return
+
+    exp_status, exp_dt = db.check_account_expiry_status(acc)
+    if exp_status != "active":
+        if query: await query.answer("🔒 Message locked! Renew email validity to read messages.", show_alert=True)
+        return
+
+    await query.answer("Loading message...")
 
     try:
         msg_detail = await mail_api.get_message_detail(acc["token"], msg_id)
@@ -471,6 +541,92 @@ async def toggle_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=get_main_reply_keyboard(new_lang)
     )
 
+async def my_profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = update.effective_user
+    lang = await db.get_user_language(user_id)
+    
+    u_details = await db.get_user_details(user_id)
+    u_accounts = await db.get_user_accounts(user_id)
+    u_claims = await db.get_user_payment_claims(user_id)
+
+    joined_date = u_details.get("created_at", "N/A")[:10] if (u_details and u_details.get("created_at")) else "N/A"
+    is_vip = u_details.get("is_vip", 0) == 1 if u_details else False
+    user_status = "👑 VIP Member" if is_vip else "⭐ Standard Member"
+    uname = f"@{user.username}" if (user and user.username) else safe_html(user.first_name if user else "User")
+
+    total_mails = len(u_accounts)
+    active_mails = 0
+    expired_mails = 0
+
+    for acc in u_accounts:
+        st, _ = db.check_account_expiry_status(acc)
+        if st == "active":
+            active_mails += 1
+        else:
+            expired_mails += 1
+
+    # Format claims history
+    history_text = ""
+    if u_claims:
+        for idx, c in enumerate(u_claims[:5], start=1):
+            c_amount = c.get("amount", 10)
+            c_trx = safe_html(c.get("trx_id", "N/A"))
+            c_status = c.get("status", "PENDING")
+            
+            if c_status == "APPROVED":
+                status_icon = "✅ Approved"
+            elif c_status == "REJECTED":
+                status_icon = "❌ Rejected"
+            elif c_status == "CANCELLED_BY_USER":
+                status_icon = "🚫 Cancelled"
+            else:
+                status_icon = "⏳ Pending"
+            
+            history_text += f"  {idx}. <code>{c_trx}</code> | 💰 {c_amount} TK | {status_icon}\n"
+    else:
+        history_text = "  <i>(কোনো সাম্প্রতিক পেমেন্ট দাবি নেই / No recent claims)</i>\n"
+
+    if lang == "bn":
+        profile_msg = (
+            f"👤 <b>আপনার ইউজার প্রোফাইল ও পেমেন্ট হিস্ট্রি</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"<blockquote>👤 <b>User:</b> {uname} (ID: <code>{user_id}</code>)\n"
+            f"🏅 <b>Status:</b> <b>{user_status}</b>\n"
+            f"📅 <b>যোগদানের তারিখ:</b> <code>{joined_date}</code></blockquote>\n\n"
+            f"📊 <b>ইমেইল অ্যাকাউন্ট পরিসংখ্যান:</b>\n"
+            f"<blockquote>📧 <b>মোট ইমেইল:</b> <code>{total_mails}</code> টি\n"
+            f"🟢 <b>সচল (Active):</b> <code>{active_mails}</code> টি\n"
+            f"🔒 <b>মেয়াদ উত্তীর্ণ (Expired):</b> <code>{expired_mails}</code> টি</blockquote>\n\n"
+            f"💳 <b>সাম্প্রতিক পেমেন্ট দাবি (TrxID History):</b>\n"
+            f"<blockquote>{history_text}</blockquote>"
+        )
+    else:
+        profile_msg = (
+            f"👤 <b>Your Profile & Payment History</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"<blockquote>👤 <b>User:</b> {uname} (ID: <code>{user_id}</code>)\n"
+            f"🏅 <b>Status:</b> <b>{user_status}</b>\n"
+            f"📅 <b>Joined Date:</b> <code>{joined_date}</code></blockquote>\n\n"
+            f"📊 <b>Email Account Statistics:</b>\n"
+            f"<blockquote>📧 <b>Total Emails:</b> <code>{total_mails}</code>\n"
+            f"🟢 <b>Active:</b> <code>{active_mails}</code>\n"
+            f"🔒 <b>Expired:</b> <code>{expired_mails}</code></blockquote>\n\n"
+            f"💳 <b>Recent Payment Claims (TrxID History):</b>\n"
+            f"<blockquote>{history_text}</blockquote>"
+        )
+
+    kb = [
+        [InlineKeyboardButton("🗂 View Saved Mails", callback_data="list_saved", api_kwargs={"style": "success"})],
+        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})]
+    ]
+
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(profile_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        await update.message.reply_text(profile_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+
 async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
@@ -520,25 +676,507 @@ async def admin_backup_command(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await update.message.reply_text("❌ Database file not found.")
 
-async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         return
+    lang = await db.get_user_language(user_id)
+    text = get_string(lang, "admin_panel_title")
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 Live Stats", callback_data="admin_stats", api_kwargs={"style": "primary"}),
+            InlineKeyboardButton("📄 Export Users List", callback_data="admin_export_users", api_kwargs={"style": "primary"})
+        ],
+        [
+            InlineKeyboardButton("🚫 Ban User", callback_data="admin_ban_prompt", api_kwargs={"style": "danger"}),
+            InlineKeyboardButton("📋 Banned Users", callback_data="admin_ban_list", api_kwargs={"style": "primary"})
+        ],
+        [
+            InlineKeyboardButton("💳 Pending Payments", callback_data="admin_pending_payments", api_kwargs={"style": "success"}),
+            InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast_prompt", api_kwargs={"style": "primary"})
+        ],
+        [
+            InlineKeyboardButton("👑 Toggle VIP", callback_data="admin_vip_prompt", api_kwargs={"style": "primary"}),
+            InlineKeyboardButton("💾 DB Backup", callback_data="admin_backup", api_kwargs={"style": "primary"})
+        ],
+        [
+            InlineKeyboardButton("🔙 Close Panel", callback_data="admin_close", api_kwargs={"style": "primary"})
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
-    stats = await db.get_admin_stats()
-    text = (
-        f"👑 <b>Admin Dashboard Statistics</b>\n\n"
-        f"👤 Total Bot Users: <b>{stats['total_users']}</b>\n"
-        f"📧 Total Saved Mail Accounts: <b>{stats['total_accounts']}</b>"
+async def admin_export_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+    
+    query = update.callback_query
+    if query:
+        await query.answer("Generating users list...", show_alert=False)
+
+    users = await db.get_all_users_for_export()
+    
+    content = "=====================================================\n"
+    content += "           TEMP MAIL BOT - ALL USERS LIST           \n"
+    content += "=====================================================\n\n"
+    content += f"Total Registered Users: {len(users)}\n"
+    content += "-" * 75 + "\n"
+    content += f"{'Telegram ID':<15} | {'Username':<20} | {'First Name':<20} | {'Status':<10}\n"
+    content += "-" * 75 + "\n"
+
+    for u in users:
+        t_id = str(u.get("telegram_id", ""))
+        uname = f"@{u.get('username')}" if u.get('username') else "No Username"
+        fname = (u.get("first_name") or "N/A")[:18]
+        status = "BANNED" if u.get("is_banned") == 1 else ("VIP" if u.get("is_vip") == 1 else "Active")
+        content += f"{t_id:<15} | {uname:<20} | {fname:<20} | {status:<10}\n"
+
+    file_bytes = content.encode("utf-8")
+    bio = io.BytesIO(file_bytes)
+    bio.name = "bot_users_list.txt"
+
+    await context.bot.send_document(
+        chat_id=user_id,
+        document=InputFile(bio, filename="bot_users_list.txt"),
+        caption=f"📄 <b>Total Users Export File</b>\nTotal Users: <b>{len(users)}</b>",
+        parse_mode="HTML"
     )
-    await update.message.reply_text(text, parse_mode="HTML")
+
+async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID and (update.callback_query is None or update.effective_user.id != ADMIN_ID):
+        return
+
+    lang = await db.get_user_language(user_id)
+    stats = await db.get_admin_stats()
+    text = get_string(
+        lang,
+        "admin_stats_text",
+        total_users=stats["total_users"],
+        new_users_today=stats["new_users_today"],
+        total_accounts=stats["total_accounts"],
+        today_accounts=stats.get("today_accounts", 0),
+        banned_users=stats["banned_users"],
+        vip_users=stats["vip_users"]
+    )
+    keyboard = [[InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel", api_kwargs={"style": "primary"})]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+async def show_banned_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+    
+    lang = await db.get_user_language(user_id)
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    banned_users = await db.get_banned_users_list()
+
+    if not banned_users:
+        text = get_string(lang, "no_banned_users")
+        keyboard = [[InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel", api_kwargs={"style": "primary"})]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+    else:
+        text = get_string(lang, "ban_list_title")
+        keyboard = []
+        for u in banned_users:
+            u_id = u["telegram_id"]
+            uname = f"@{u['username']}" if u.get("username") else f"ID: {u_id}"
+            btn_label = f"🔓 Unban {uname}"
+            keyboard.append([InlineKeyboardButton(btn_label, callback_data=f"do_unban:{u_id}", api_kwargs={"style": "danger"})])
+        
+        keyboard.append([InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel", api_kwargs={"style": "primary"})])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if query:
+        await query.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+async def start_ban_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+    lang = await db.get_user_language(user_id)
+    text = get_string(lang, "prompt_ban")
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    return WAITING_FOR_BAN_ID
+
+async def process_ban_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text.strip()
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+    lang = await db.get_user_language(user_id)
+
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', raw_text) or raw_text.startswith("/"):
+        return await cancel_and_route_menu(update, context)
+
+    target_user = await db.find_user_by_identifier(raw_text)
+    if not target_user:
+        await update.message.reply_text(get_string(lang, "user_not_found"), parse_mode="HTML")
+        return WAITING_FOR_BAN_ID
+
+    target_id = target_user["telegram_id"]
+    uname = f"@{target_user['username']}" if target_user.get("username") else f"ID: {target_id}"
+    await db.set_user_ban_status(target_id, True)
+
+    succ_msg = get_string(lang, "banned_success", user_info=safe_html(uname))
+    await update.message.reply_text(succ_msg, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
+    return ConversationHandler.END
+
+async def start_unban_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+    lang = await db.get_user_language(user_id)
+    text = get_string(lang, "prompt_unban")
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    return WAITING_FOR_UNBAN_ID
+
+async def process_unban_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text.strip()
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+    lang = await db.get_user_language(user_id)
+
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', raw_text) or raw_text.startswith("/"):
+        return await cancel_and_route_menu(update, context)
+
+    target_user = await db.find_user_by_identifier(raw_text)
+    if not target_user:
+        await update.message.reply_text(get_string(lang, "user_not_found"), parse_mode="HTML")
+        return WAITING_FOR_UNBAN_ID
+
+    target_id = target_user["telegram_id"]
+    uname = f"@{target_user['username']}" if target_user.get("username") else f"ID: {target_id}"
+    await db.set_user_ban_status(target_id, False)
+
+    succ_msg = get_string(lang, "unbanned_success", user_info=safe_html(uname))
+    await update.message.reply_text(succ_msg, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
+    return ConversationHandler.END
+
+async def start_vip_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+    lang = await db.get_user_language(user_id)
+    text = get_string(lang, "prompt_vip")
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    return WAITING_FOR_VIP_ID
+
+async def process_vip_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text.strip()
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+    lang = await db.get_user_language(user_id)
+
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', raw_text) or raw_text.startswith("/"):
+        return await cancel_and_route_menu(update, context)
+
+    target_user = await db.find_user_by_identifier(raw_text)
+    if not target_user:
+        await update.message.reply_text(get_string(lang, "user_not_found"), parse_mode="HTML")
+        return WAITING_FOR_VIP_ID
+
+    target_id = target_user["telegram_id"]
+    uname = f"@{target_user['username']}" if target_user.get("username") else f"ID: {target_id}"
+    new_status = await db.toggle_user_vip(target_id)
+    status_text = "VIP Member" if new_status else "Regular Member"
+
+    succ_msg = get_string(lang, "vip_toggled_success", user_info=safe_html(uname), status=status_text)
+    await update.message.reply_text(succ_msg, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
+    return ConversationHandler.END
+
+async def start_payment_submission_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return ConversationHandler.END
+    
+    parts = query.data.split(":", 1)
+    target_email = parts[1] if len(parts) > 1 else ""
+    user_id = update.effective_user.id
+    lang = await db.get_user_language(user_id)
+    
+    user_accs = await db.get_user_accounts(user_id)
+    acc_count = len(user_accs)
+    amount = 12 if acc_count > 1 else 10
+    if acc_count > 1:
+        target_email = "ALL"
+
+    context.user_data["pay_target_email"] = target_email
+    context.user_data["pay_amount"] = amount
+
+    text = get_string(lang, "prompt_sender_number", amount=amount)
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
+    await query.answer()
+    await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    return WAITING_FOR_SENDER_NUMBER
+
+async def process_sender_number_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender_number = update.message.text.strip()
+    user_id = update.effective_user.id
+    lang = await db.get_user_language(user_id)
+
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', sender_number) or sender_number.startswith("/"):
+        return await cancel_and_route_menu(update, context)
+
+    context.user_data["pay_sender_number"] = sender_number
+    text = get_string(lang, "prompt_trx_id")
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    return WAITING_FOR_TRX_ID
+
+async def process_trx_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    trx_id = update.message.text.strip()
+    user_id = update.effective_user.id
+    user = update.effective_user
+    lang = await db.get_user_language(user_id)
+
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', trx_id) or trx_id.startswith("/"):
+        return await cancel_and_route_menu(update, context)
+
+    target_email = context.user_data.get("pay_target_email", "")
+    sender_number = context.user_data.get("pay_sender_number", "")
+    amount = context.user_data.get("pay_amount", 10)
+
+    claim_id = await db.create_payment_claim(user_id, target_email, sender_number, trx_id, amount=amount)
+
+    succ_text = get_string(lang, "payment_submitted_success", email=safe_html(target_email), sender_number=safe_html(sender_number), trx_id=safe_html(trx_id), amount=amount)
+    await update.message.reply_text(succ_text, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
+
+    # Send immediate notification to ADMIN
+    uname = f"@{user.username}" if user.username else safe_html(user.first_name)
+    admin_alert = get_string(
+        "bn",
+        "admin_new_claim_alert",
+        user_info=uname,
+        user_id=user_id,
+        email=safe_html(target_email),
+        sender_number=safe_html(sender_number),
+        trx_id=safe_html(trx_id),
+        amount=amount
+    )
+    admin_kb = [
+        [
+            InlineKeyboardButton(f"✅ Approve ({amount} TK - +2M)", callback_data=f"approve_pay:{claim_id}", api_kwargs={"style": "success"}),
+            InlineKeyboardButton("❌ Reject Claim", callback_data=f"reject_pay:{claim_id}", api_kwargs={"style": "danger"})
+        ]
+    ]
+    try:
+        await context.bot.send_message(chat_id=ADMIN_ID, text=admin_alert, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(admin_kb))
+    except Exception as e:
+        logger.error(f"Failed to alert admin about payment claim: {e}")
+
+    return ConversationHandler.END
+
+async def start_broadcast_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+
+    lang = await db.get_user_language(user_id)
+    text = (
+        "📢 <b>ব্রডকাস্ট মেসেজ পাঠাতে টাইপ করুন / মিডিয়ায় পাঠান</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "<blockquote>বটের সকল সক্রিয় ইউজারদের কাছে যেই নোটিফিকেশন পাঠাতে চান সেটি লিখুন বা কোনো ছবি/ডকুমেন্ট পাঠাইয়া দিন।\n"
+        "<i>(এইচটিএমএল ফরম্যাটিং, ছবি ও টেক্সট গ্রহণযোগ্য)</i></blockquote>\n\n"
+        "🚫 বাতিল করতে /cancel টাইপ করুন।"
+    )
+    kb = [[InlineKeyboardButton("❌ Cancel / Back", callback_data="cancel_prompt", api_kwargs={"style": "danger"})]]
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    return WAITING_FOR_BROADCAST_CONTENT
+
+async def process_broadcast_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+
+    msg = update.message
+    if msg.text and (re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', msg.text) or msg.text.startswith("/")):
+        return await cancel_and_route_menu(update, context)
+
+    users = await db.get_all_users()
+    total_users = len(users)
+
+    status_msg = await update.message.reply_text(f"📢 <b>সকল {total_users}জন ইউজারের কাছে ব্রডকাস্ট পাঠানো হচ্ছে...</b>\n<i>অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করুন।</i>", parse_mode="HTML")
+
+    success_count = 0
+    failed_count = 0
+
+    for u_id in users:
+        try:
+            await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
+            success_count += 1
+            await asyncio.sleep(0.05)
+        except Exception:
+            failed_count += 1
+
+    report_text = (
+        f"🎉 <b>ব্রডকাস্ট সফলভাবে সম্পন্ন হয়েছে!</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"<blockquote>👥 <b>মোট ইউজার:</b> <code>{total_users}</code>\n"
+        f"🟢 <b>সফলভাবে ডেলিভার্ড:</b> <code>{success_count}</code>\n"
+        f"🔴 <b>ব্যর্থ/ব্লকড:</b> <code>{failed_count}</code></blockquote>"
+    )
+    await status_msg.edit_text(report_text, parse_mode="HTML")
+    return ConversationHandler.END
+
+async def admin_pending_payments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    claims = await db.get_pending_payment_claims()
+    if not claims:
+        text = "🎉 <b>No pending payment claims found!</b>"
+        kb = [[InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel", api_kwargs={"style": "primary"})]]
+        if query: await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+        else: await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+        return
+
+    text = f"💳 <b>Pending Payment Claims ({len(claims)} total):</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    keyboard = []
+    for c in claims[:10]:
+        c_id = c["id"]
+        u_id = c["telegram_id"]
+        email = c["email"]
+        num = c["sender_number"]
+        trx = c["trx_id"]
+
+        text += f"• <b>Claim #{c_id}</b> | User ID: <code>{u_id}</code>\n"
+        text += f"  📧 Email: <code>{safe_html(email)}</code>\n"
+        text += f"  📱 Sender Number: <code>{safe_html(num)}</code> | TrxID: <code>{safe_html(trx)}</code>\n\n"
+
+        keyboard.append([
+            InlineKeyboardButton(f"✅ Approve #{c_id}", callback_data=f"approve_pay:{c_id}", api_kwargs={"style": "success"}),
+            InlineKeyboardButton(f"❌ Reject #{c_id}", callback_data=f"reject_pay:{c_id}", api_kwargs={"style": "danger"})
+        ])
+    
+    keyboard.append([InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel", api_kwargs={"style": "primary"})])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if query:
+        await query.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+async def approve_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, claim_id: int):
+    query = update.callback_query
+    success, claim = await db.approve_payment_claim(claim_id)
+    if not success or not claim:
+        if query: await query.answer("Claim not found or already processed!", show_alert=True)
+        return
+
+    if query:
+        await query.answer("✅ Payment Approved & Extended +2 Months!", show_alert=True)
+        try:
+            await query.message.edit_text(
+                f"✅ <b>Claim #{claim_id} Approved!</b>\n"
+                f"📧 Email: <code>{safe_html(claim['email'])}</code>\n"
+                f"👤 User ID: <code>{claim['telegram_id']}</code>\n"
+                f"⏳ Validity extended for +2 Months (60 days)!",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+    # Send push notification to user
+    try:
+        user_id = claim["telegram_id"]
+        lang = await db.get_user_language(user_id)
+        amount = claim.get("amount", 10)
+        target_email = claim["email"]
+        display_email = "All Mails (Combo)" if target_email == "ALL" else safe_html(target_email)
+        user_msg = get_string(lang, "user_payment_approved_notice", email=display_email, amount=amount)
+        cb_data = "list_saved" if target_email == "ALL" else f"inbox:{target_email}"
+        kb = [[InlineKeyboardButton("📥 Check Inbox / Saved Mails", callback_data=cb_data, api_kwargs={"style": "success"})]]
+        await context.bot.send_message(chat_id=user_id, text=user_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    except Exception as e:
+        logger.error(f"Failed to send approval notice to user: {e}")
+
+async def reject_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, claim_id: int):
+    query = update.callback_query
+    success, claim = await db.reject_payment_claim(claim_id)
+    if not success or not claim:
+        if query: await query.answer("Claim not found or already processed!", show_alert=True)
+        return
+
+    if query:
+        await query.answer("❌ Claim Rejected!", show_alert=True)
+        try:
+            await query.message.edit_text(
+                f"❌ <b>Claim #{claim_id} Rejected!</b>\n"
+                f"📧 Email: <code>{safe_html(claim['email'])}</code>\n"
+                f"👤 User ID: <code>{claim['telegram_id']}</code>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+    # Send push notification to user
+    try:
+        user_id = claim["telegram_id"]
+        lang = await db.get_user_language(user_id)
+        user_msg = get_string(lang, "user_payment_rejected_notice", email=safe_html(claim["email"]), trx_id=safe_html(claim.get("trx_id", "")))
+        await context.bot.send_message(chat_id=user_id, text=user_msg, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Failed to send rejection notice to user: {e}")
 
 async def auto_inbox_poller_task(app: Application):
     logger.info("Realtime background inbox poller started...")
     while True:
         try:
+            # Clean up accounts overdue past 5 days grace period & check expiry warnings
+            try:
+                await db.cleanup_overdue_expired_accounts()
+                await db.check_and_send_expiry_reminders(app.bot)
+            except Exception as e:
+                logger.error(f"Error in background maintenance tasks: {e}")
+
             active_accs = await db.get_all_active_accounts()
             for acc in active_accs:
+                exp_status, _ = db.check_account_expiry_status(acc)
+                if exp_status != "active":
+                    continue
+
                 u_id = acc["telegram_id"]
                 email = acc["email"]
                 token = acc["token"]
@@ -631,14 +1269,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         acc = await db.get_account(user_id, email)
         if acc:
+            exp_status, exp_dt = db.check_account_expiry_status(acc)
+            if exp_status != "active":
+                await query.answer("🔒 Credentials locked! Renew email validity to view details.", show_alert=True)
+                return
             await query.answer()
+            exp_str = acc.get("expires_at", "60 Days")
+            free_used = acc.get("free_trial_used", 0)
+            status_trial = "Already Used" if free_used == 1 else "Available (1-Time Free)"
             text = (
                 f"🔑 <b>Credentials for <code>{safe_html(email)}</code></b>:\n\n"
                 f"📧 Email: <code>{safe_html(acc['email'])}</code>\n"
-                f"🔑 Password: <code>{safe_html(acc['password'])}</code>\n\n"
+                f"🔑 Password: <code>{safe_html(acc['password'])}</code>\n"
+                f"⏳ Expiry Date: <code>{exp_str}</code>\n"
+                f"🎁 2-Month Trial Status: <b>{status_trial}</b>\n\n"
                 f"💡 <i>Tip: Tap email or password to copy!</i>"
             )
-            kb = [[InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}", api_kwargs={"style": "primary"})]]
+            kb = [
+                [InlineKeyboardButton("🎁 Claim 2 Months Extension", callback_data=f"extend_mail:{email}", api_kwargs={"style": "success"})],
+                [InlineKeyboardButton("🔙 Back to Inbox", callback_data=f"inbox:{email}", api_kwargs={"style": "primary"})]
+            ]
             await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     elif data.startswith("del_acc:"):
         email = data.split(":", 1)[1]
@@ -649,15 +1299,76 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await mail_api.delete_account(acc["token"], acc["account_id"])
             except Exception:
                 pass
-        await db.delete_saved_account(user_id, email)
-        await query.answer("Email account deleted!", show_alert=True)
+    elif data.startswith("extend_mail:"):
+        email = data.split(":", 1)[1]
+        user_id = update.effective_user.id
+        lang = await db.get_user_language(user_id)
+        
+        success, res = await db.extend_email_validity_free(user_id, email)
+        if success:
+            await query.answer("🎉 Validity extended for 2 months!", show_alert=True)
+            succ_msg = get_string(lang, "free_trial_extended_success", email=safe_html(email), expires_at=res)
+            kb = [
+                [InlineKeyboardButton("📥 Check Inbox", callback_data=f"inbox:{email}", api_kwargs={"style": "success"})],
+                [InlineKeyboardButton("🗂 Saved Mails", callback_data="list_saved", api_kwargs={"style": "primary"})]
+            ]
+            await query.message.reply_text(succ_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+        elif res == "already_used":
+            await query.answer("⚠️ Free trial already used!", show_alert=True)
+            user_accs = await db.get_user_accounts(user_id)
+            acc_count = len(user_accs)
+            if acc_count > 1:
+                pay_msg = get_string(lang, "payment_notice_text_multi", count=acc_count)
+            else:
+                pay_msg = get_string(lang, "payment_notice_text_single")
+            kb = [
+                [InlineKeyboardButton("💳 Submit Payment Info", callback_data=f"start_pay_submit:{email}", api_kwargs={"style": "success"})],
+                [InlineKeyboardButton("📩 Contact Admin", url="https://t.me/Mithu_BD", api_kwargs={"style": "primary"})],
+                [InlineKeyboardButton("❌ Cancel & Back to Main Menu", callback_data="back_main", api_kwargs={"style": "primary"})]
+            ]
+            await query.message.reply_text(pay_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await query.answer("❌ Account not found!", show_alert=True)
+    elif data == "cancel_my_claim":
+        user_id = update.effective_user.id
+        await db.cancel_user_pending_claim(user_id)
+        await query.answer("❌ Your pending payment claim has been cancelled!", show_alert=True)
         await list_saved_mails(update, context)
     elif data == "back_main":
         user_id = update.effective_user.id
         lang = await db.get_user_language(user_id)
         welcome_text = get_string(lang, "welcome", name=safe_html(update.effective_user.first_name))
         await query.answer()
-        await query.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang))
+        await query.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
+    elif data == "admin_panel":
+        await admin_panel_command(update, context)
+    elif data == "admin_stats":
+        await admin_stats_command(update, context)
+    elif data == "admin_export_users":
+        await admin_export_users_command(update, context)
+    elif data == "admin_ban_list":
+        await show_banned_list_command(update, context)
+    elif data == "admin_pending_payments":
+        await admin_pending_payments_command(update, context)
+    elif data.startswith("approve_pay:"):
+        claim_id = int(data.split(":", 1)[1])
+        await approve_payment_callback(update, context, claim_id)
+    elif data.startswith("reject_pay:"):
+        claim_id = int(data.split(":", 1)[1])
+        await reject_payment_callback(update, context, claim_id)
+    elif data.startswith("do_unban:"):
+        target_id = int(data.split(":", 1)[1])
+        await db.set_user_ban_status(target_id, False)
+        await query.answer("✅ User successfully unbanned!", show_alert=True)
+        await show_banned_list_command(update, context)
+    elif data == "admin_close":
+        await query.answer("Admin panel closed.")
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+    elif data == "admin_backup":
+        await admin_backup_command(update, context)
 
 async def cancel_prompt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -665,7 +1376,7 @@ async def cancel_prompt_callback(update: Update, context: ContextTypes.DEFAULT_T
         user_id = update.effective_user.id
         lang = await db.get_user_language(user_id)
         await query.answer("Cancelled!")
-        await query.message.reply_text("🚫 Operation cancelled.", reply_markup=get_main_reply_keyboard(lang))
+        await query.message.reply_text("🚫 Operation cancelled.", reply_markup=get_main_reply_keyboard(lang, user_id))
     return ConversationHandler.END
 
 async def start_login_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -696,8 +1407,12 @@ async def cancel_and_route_menu(update: Update, context: ContextTypes.DEFAULT_TY
         return await start_login_prompt(update, context)
     elif "Language" in text:
         await toggle_language(update, context)
+    elif "Profile" in text or "profile" in text:
+        await my_profile_command(update, context)
     elif "Help" in text:
         await help_command(update, context)
+    elif "Admin" in text or "admin" in text:
+        await admin_panel_command(update, context)
     elif text.startswith("/start"):
         await start_command(update, context)
     return ConversationHandler.END
@@ -706,7 +1421,7 @@ async def process_login_input(update: Update, context: ContextTypes.DEFAULT_TYPE
     raw_input = update.message.text.strip()
     user_id = update.effective_user.id
 
-    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help)', raw_input) or raw_input.startswith("/"):
+    if re.search(r'(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin)', raw_input) or raw_input.startswith("/"):
         return await cancel_and_route_menu(update, context)
 
     if ":" not in raw_input and " " not in raw_input:
@@ -741,14 +1456,14 @@ async def process_login_input(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def cancel_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang = await db.get_user_language(user_id)
-    await update.message.reply_text("🚫 Cancelled.", reply_markup=get_main_reply_keyboard(lang))
+    await update.message.reply_text("🚫 Cancelled.", reply_markup=get_main_reply_keyboard(lang, user_id))
     return ConversationHandler.END
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang = await db.get_user_language(user_id)
     help_text = get_string(lang, "help_text")
-    await update.message.reply_text(help_text, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang))
+    await update.message.reply_text(help_text, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
 
 def setup_bot_application(token: str) -> Application:
     from telegram.request import HTTPXRequest
@@ -756,7 +1471,7 @@ def setup_bot_application(token: str) -> Application:
     app = Application.builder().token(token).request(request).build()
 
     menu_fallback = MessageHandler(
-        filters.Regex(".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help).*"),
+        filters.Regex(".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin).*"),
         cancel_and_route_menu
     )
 
@@ -788,24 +1503,101 @@ def setup_bot_application(token: str) -> Application:
         per_message=False
     )
 
+    ban_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_ban_prompt, pattern="^admin_ban_prompt$")
+        ],
+        states={
+            WAITING_FOR_BAN_ID: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_ban_input)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
+    )
+
+    unban_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_unban_prompt, pattern="^admin_unban_prompt$")
+        ],
+        states={
+            WAITING_FOR_UNBAN_ID: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_unban_input)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
+    )
+
+    vip_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_vip_prompt, pattern="^admin_vip_prompt$")
+        ],
+        states={
+            WAITING_FOR_VIP_ID: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_vip_input)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
+    )
+
+    payment_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_payment_submission_prompt, pattern="^start_pay_submit:")
+        ],
+        states={
+            WAITING_FOR_SENDER_NUMBER: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_sender_number_input)
+            ],
+            WAITING_FOR_TRX_ID: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_trx_id_input)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
+    )
+
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("admin", admin_panel_command))
     app.add_handler(CommandHandler("new", create_new_mail))
     app.add_handler(CommandHandler("myaccounts", list_saved_mails))
     app.add_handler(CommandHandler("inbox", current_inbox_command))
     app.add_handler(CommandHandler("stats", admin_stats_command))
     app.add_handler(CommandHandler("broadcast", admin_broadcast_command))
     app.add_handler(CommandHandler("backup", admin_backup_command))
+    app.add_handler(CommandHandler("profile", my_profile_command))
     app.add_handler(CommandHandler("help", help_command))
 
+    app.add_handler(MessageHandler(filters.Regex(".*(Admin Control|Admin Panel).*"), admin_panel_command))
     app.add_handler(MessageHandler(filters.Regex(".*Create Random Mail.*"), create_new_mail))
     app.add_handler(MessageHandler(filters.Regex(".*Saved Mails.*"), list_saved_mails))
     app.add_handler(MessageHandler(filters.Regex(".*Current Inbox.*"), current_inbox_command))
     app.add_handler(MessageHandler(filters.Regex(".*Export TXT.*"), export_txt_command))
     app.add_handler(MessageHandler(filters.Regex(".*Language.*"), toggle_language))
+    app.add_handler(MessageHandler(filters.Regex(".*(My Profile|Profile).*"), my_profile_command))
     app.add_handler(MessageHandler(filters.Regex(".*Help.*"), help_command))
+
+    broadcast_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_broadcast_prompt, pattern="^admin_broadcast_prompt$")
+        ],
+        states={
+            WAITING_FOR_BROADCAST_CONTENT: [
+                MessageHandler(filters.ALL & ~filters.COMMAND, process_broadcast_content)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
+    )
 
     app.add_handler(login_conv)
     app.add_handler(custom_conv)
+    app.add_handler(ban_conv)
+    app.add_handler(unban_conv)
+    app.add_handler(vip_conv)
+    app.add_handler(payment_conv)
+    app.add_handler(broadcast_conv)
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     return app

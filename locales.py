@@ -34,7 +34,142 @@ STRINGS = {
         "btn_login": "🔐 Login Account",
         "btn_export_txt": "📁 Export TXT",
         "btn_lang": "🌐 Language / ভাষা",
+        "btn_profile": "👤 My Profile",
         "btn_help": "❓ Help",
+        "btn_admin": "👑 Admin Control",
+        "admin_panel_title": (
+            "👑 <b>Admin Control Panel</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>স্বাগতম এডমিন! নিচের অপশনগুলো দিয়ে বট পরিচালনা ও তথ্য দেখতে পারবেন।</blockquote>"
+        ),
+        "admin_stats_text": (
+            "📊 <b>লাইভ স্ট্যাটিস্টিকস ড্যাশবোর্ড</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>👥 <b>মোট ইউজার:</b> <code>{total_users}</code> জন\n"
+            "📅 <b>আজকের নতুন ইউজার:</b> <code>{new_users_today}</code> জন\n"
+            "📧 <b>আজকের তৈরি ইমেইল:</b> <code>{today_accounts}</code> টি\n"
+            "📧 <b>সর্বমোট ইমেইল:</b> <code>{total_accounts}</code> টি\n"
+            "🚫 <b>ব্যানড ইউজার:</b> <code>{banned_users}</code> জন\n"
+            "👑 <b>VIP ইউজার:</b> <code>{vip_users}</code> জন</blockquote>"
+        ),
+        "prompt_ban": (
+            "🚫 <b>ইউজার ব্যান করুন</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>ব্যান করতে চাওয়া ইউজারের Username বা Telegram ID টাইপ করুন।\n"
+            "<i>(উদাহরণ: <code>@mithubd</code> বা <code>mithubd</code> বা <code>123456789</code>)</i></blockquote>\n\n"
+            "🚫 বাতিল করতে /cancel টাইপ করুন।"
+        ),
+        "prompt_unban": (
+            "✅ <b>ইউজার আনব্যান করুন</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>আনব্যান করতে চাওয়া ইউজারের Username বা Telegram ID টাইপ করুন।\n"
+            "<i>(উদাহরণ: <code>@mithubd</code> বা <code>123456789</code>)</i></blockquote>\n\n"
+            "🚫 বাতিল করতে /cancel টাইপ করুন।"
+        ),
+        "prompt_vip": (
+            "👑 <b>VIP স্ট্যাটাস টগল করুন</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>VIP দেওয়া বা সরানোর জন্য ইউজারের Username বা Telegram ID টাইপ করুন।\n"
+            "<i>(উদাহরণ: <code>@mithubd</code> বা <code>123456789</code>)</i></blockquote>\n\n"
+            "🚫 বাতিল করতে /cancel টাইপ করুন।"
+        ),
+        "ban_list_title": "📋 <b>ব্যানড ইউজারের তালিকা:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n💡 <i>যেকোনো ইউজারের ওপর ক্লিক করলে সাথে সাথে Unban হয়ে যাবে!</i>\n\n",
+        "no_banned_users": "🎉 <b>কোনো ব্যানড ইউজার পাওয়া যায়নি!</b>",
+        "user_not_found": "❌ <b>ইউজার ডাটাবেসে পাওয়া যায়নি!</b>\nঅনুগ্রহ করে সঠিক Username বা Telegram ID টাইপ করুন।",
+        "user_banned_notice": "🚫 <b>আপনার অ্যাকাউন্টটি ব্যান করা হয়েছে!</b>\nআপনি এই বটের সুবিধা ব্যবহার করতে পারবেন না।",
+        "banned_success": "✅ <b>User {user_info} সফলভাবে ব্যান করা হয়েছে!</b>",
+        "unbanned_success": "✅ <b>User {user_info} সফলভাবে আনব্যান করা হয়েছে!</b>",
+        "vip_toggled_success": "👑 <b>User {user_info} এর VIP স্ট্যাটাস পরিবর্তিত হয়ে standard: {status} হয়েছে!</b>",
+        "free_trial_extended_success": (
+            "🎉 <b>ইমেইলের মেয়াদ সফলভাবে ২ মাস বাড়ল!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>📧 <b>Email:</b> <code>{email}</code>\n"
+            "⏳ <b>নতুন মেয়াদকাল:</b> <code>{expires_at}</code> (মেয়াদ আরও ২ মাস বাড়ল)</blockquote>"
+        ),
+        "payment_notice_text": (
+            "⚠️ <b>Free trial for 2 Months already used for this email!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>💸 <b>ইমেইলের মেয়াদ আরও ২ মাস বাড়াতে ১০ টাকা Send Money করুন:</b>\n\n"
+            "📱 <b>Bkash or Nagad (Send Money):</b>\n"
+            "<code>01864339154</code>\n\n"
+            "<i>(01864339154 নাম্বারে ১০ টাকা সেন্ড মানি করে নিচে Submit Payment Info ক্লিকে তথ্য প্রদান করুন। এডমিন ভেরিফাই করে মেয়াদ আরও ২ মাস বাড়িয়ে দেবেন!)</i></blockquote>"
+        ),
+        "payment_notice_text_single": (
+            "⚠️ <b>Free trial for 2 Months already used for this email!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>💸 <b>ইমেইলের মেয়াদ আরও ২ মাস বাড়াতে ১০ টাকা Send Money করুন:</b>\n\n"
+            "📱 <b>Bkash or Nagad (Send Money):</b>\n"
+            "<code>01864339154</code>\n\n"
+            "<i>(01864339154 নাম্বারে ১০ টাকা সেন্ড মানি করে নিচে Submit Payment Info ক্লিকে তথ্য প্রদান করুন। এডমিন ভেরিফাই করে মেয়াদ আরও ২ মাস বাড়িয়ে দেবেন!)</i></blockquote>"
+        ),
+        "payment_notice_text_multi": (
+            "⚠️ <b>Free trial for 2 Months already used!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>🎁 <b>Combo Offer! (আপনার মোট {count}টি ইমেইল রয়েছে)</b>\n"
+            "💸 <b>সকল {count}টি ইমেইলের মেয়াদ একসাথে ২ মাস বাড়াতে মাত্র ১২ টাকা Send Money করুন:</b>\n\n"
+            "📱 <b>Bkash or Nagad (Send Money):</b>\n"
+            "<code>01864339154</code>\n\n"
+            "<i>(01864339154 নাম্বারে মাত্র ১২ টাকা সেন্ড মানি করলে আপনার সকল {count}টি ইমেইলের মেয়াদ একসাথে আরও ২ মাস বাড়িয়ে দেওয়া হবে!)</i></blockquote>"
+        ),
+        "prompt_sender_number": (
+            "📱 <b>পেমেন্ট তথ্য প্রদান করুন (Step 1/2)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>যেই বিকাশ/নগদ নাম্বার থেকে <b>{amount} টাকা</b> পাঠিয়েছেন সেই নাম্বারটি টাইপ করুন।\n"
+            "<i>(উদাহরণ: <code>01712345678</code>)</i></blockquote>\n\n"
+            "🚫 বাতিল করতে /cancel টাইপ করুন।"
+        ),
+        "prompt_trx_id": (
+            "📝 <b>Transaction ID প্রদান করুন (Step 2/2)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>আপনার পেমেন্টের <b>TrxID</b> টাইপ করুন।\n"
+            "<i>(উদাহরণ: <code>9X8A7B6C5D</code>)</i></blockquote>\n\n"
+            "🚫 বাতিল করতে /cancel টাইপ করুন।"
+        ),
+        "payment_submitted_success": (
+            "🎉 <b>আপনার পেমেন্ট দাবি সফলভাবে জমা হয়েছে!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>📧 <b>Target Email:</b> <code>{email}</code>\n"
+            "📱 <b>Sender Number:</b> <code>{sender_number}</code>\n"
+            "📝 <b>TrxID:</b> <code>{trx_id}</code>\n"
+            "💰 <b>Amount:</b> {amount} TK\n\n"
+            "<i>পেমেন্টটি যাচাই করে এডমিন কিছুক্ষণের মধ্যে অ্যাপ্রুভ করে দিলে ইমেইলের মেয়াদ আরও ২ মাস বেড়ে যাবে।</i></blockquote>"
+        ),
+        "admin_new_claim_alert": (
+            "📥 <b>নতুন পেমেন্ট দাবি এসেছে! ({amount} TK)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>👤 <b>User:</b> {user_info} (ID: <code>{user_id}</code>)\n"
+            "📧 <b>Target Email:</b> <code>{email}</code>\n"
+            "📱 <b>Sender Number:</b> <code>{sender_number}</code>\n"
+            "📝 <b>TrxID:</b> <code>{trx_id}</code>\n"
+            "💰 <b>Amount:</b> {amount} TK</blockquote>"
+        ),
+        "user_payment_approved_notice": (
+            "🎉 <b>আপনার {amount} টাকা পেমেন্ট এডমিন কর্তৃক অ্যাপ্রুভ হয়েছে!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>📧 <b>Email:</b> <code>{email}</code>\n"
+            "⏳ <b>মেয়াদকাল:</b> সফলভাবে আরও ২ মাস (৬০ দিন) বাড়ানো হয়েছে!</blockquote>"
+        ),
+        "user_payment_rejected_notice": (
+            "❌ <b>আপনার পেমেন্ট দাবিটি বাতিল করা হয়েছে!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>📧 <b>Email:</b> <code>{email}</code>\n"
+            "📝 <b>TrxID:</b> <code>{trx_id}</code>\n\n"
+            "<i>সঠিক ট্রানজ্যাকশন আইডি ও সেন্ডার নাম্বার সহ পুনরায় চেষ্টা করুন।</i></blockquote>"
+        ),
+        "email_expired_locked_notice": (
+            "⚠️ <b>এই ইমেইলের মেয়াদের সময়সূচী (২ মাস) শেষ হয়ে গেছে!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>🔒 <b>Inbox Access Blocked:</b>\n"
+            "ইমেইলটি <code>{expires_at}</code> তারিখে এক্সপায়ার হয়েছে। মেয়াদ রিনিউ (Extend) না করা পর্যন্ত মেসেজ ও ইনবক্স লক থাকবে।\n\n"
+            "💸 <b>মেয়াদ বাড়াতে ও ইনবক্স পুনরায় সচল করতে নিচে '🎁 Renew / Extend 2 Months' বাটনে ক্লিক করুন!</b>\n"
+            "<i>(বিজ্ঞপ্তি: এক্সপায়ার হওয়ার পর ৫ দিনের মধ্যে পেমেন্ট করে রিনিউ না করলে ইমেইলটি স্থায়ীভাবে মুছে যাবে।)</i></blockquote>"
+        ),
+        "email_overdue_deleted_notice": (
+            "🗑️ <b>ইমেইলটি স্থায়ীভাবে ডিলিট করা হয়েছে!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote><code>{email}</code> ইমেইলটির মেয়াদের মেয়াদ শেষ হওয়ার পর ৫ দিনের গ্রেস পিরিয়ড অতিক্রম করেছে।\n\n"
+            "পেমেন্ট না করায় ইমেইলটি ডাটাবেজ ও সার্ভার (Supabase) থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে।</blockquote>"
+        ),
         "creating_mail": "⚡ <i>ইমেইল তৈরি হচ্ছে, অনুগ্রহ করে ১ সেকেন্ড অপেক্ষা করুন...</i>",
         "creating_mail_toast": "⚡ ইমেইল তৈরি হচ্ছে... অনুগ্রহ করে ১ সেকেন্ড অপেক্ষা করুন! 🚀",
         "mail_created_success": (
@@ -114,7 +249,142 @@ STRINGS = {
         "btn_login": "🔐 Login Account",
         "btn_export_txt": "📁 Export TXT",
         "btn_lang": "🌐 Language / ভাষা",
+        "btn_profile": "👤 My Profile",
         "btn_help": "❓ Help",
+        "btn_admin": "👑 Admin Control",
+        "admin_panel_title": (
+            "👑 <b>Admin Control Panel</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>Welcome Admin! Manage the bot and view statistics using options below.</blockquote>"
+        ),
+        "admin_stats_text": (
+            "📊 <b>Live Statistics Dashboard</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>👥 <b>Total Users:</b> <code>{total_users}</code>\n"
+            "📅 <b>New Users Today:</b> <code>{new_users_today}</code>\n"
+            "📧 <b>Emails Created Today:</b> <code>{today_accounts}</code>\n"
+            "📧 <b>Total Emails Created:</b> <code>{total_accounts}</code>\n"
+            "🚫 <b>Banned Users:</b> <code>{banned_users}</code>\n"
+            "👑 <b>VIP Users:</b> <code>{vip_users}</code></blockquote>"
+        ),
+        "prompt_ban": (
+            "🚫 <b>Ban User</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>Enter Username or Telegram ID of the user to ban.\n"
+            "<i>(Example: <code>@mithubd</code> or <code>mithubd</code> or <code>123456789</code>)</i></blockquote>\n\n"
+            "Type /cancel to abort."
+        ),
+        "prompt_unban": (
+            "✅ <b>Unban User</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>Enter Username or Telegram ID of the user to unban.\n"
+            "<i>(Example: <code>@mithubd</code> or <code>123456789</code>)</i></blockquote>\n\n"
+            "Type /cancel to abort."
+        ),
+        "prompt_vip": (
+            "👑 <b>Toggle VIP Status</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>Enter Username or Telegram ID of the user to toggle VIP.\n"
+            "<i>(Example: <code>@mithubd</code> or <code>123456789</code>)</i></blockquote>\n\n"
+            "Type /cancel to abort."
+        ),
+        "ban_list_title": "📋 <b>Banned Users List:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n💡 <i>Tap any user button to unban instantly!</i>\n\n",
+        "no_banned_users": "🎉 <b>No banned users found!</b>",
+        "user_not_found": "❌ <b>User not found in database!</b>\nPlease enter a valid Username or Telegram ID.",
+        "user_banned_notice": "🚫 <b>Your account has been banned!</b>\nYou cannot use this bot.",
+        "banned_success": "✅ <b>User {user_info} successfully banned!</b>",
+        "unbanned_success": "✅ <b>User {user_info} successfully unbanned!</b>",
+        "vip_toggled_success": "👑 <b>User {user_info} VIP status updated: {status}!</b>",
+        "free_trial_extended_success": (
+            "🎉 <b>Email validity successfully extended by 2 months!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>📧 <b>Email:</b> <code>{email}</code>\n"
+            "⏳ <b>New Expiry Date:</b> <code>{expires_at}</code> (+60 Days added)</blockquote>"
+        ),
+        "payment_notice_text": (
+            "⚠️ <b>Free trial for 2 Months already used for this email!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>💸 <b>To extend email validity for another 2 months, please send 10 TK:</b>\n\n"
+            "📱 <b>Bkash or Nagad (Send Money):</b>\n"
+            "<code>01864339154</code>\n\n"
+            "<i>(Send 10 TK to 01864339154 and click Submit Payment Info below to submit details!)</i></blockquote>"
+        ),
+        "payment_notice_text_single": (
+            "⚠️ <b>Free trial for 2 Months already used for this email!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>💸 <b>To extend email validity for another 2 months, please send 10 TK:</b>\n\n"
+            "📱 <b>Bkash or Nagad (Send Money):</b>\n"
+            "<code>01864339154</code>\n\n"
+            "<i>(Send 10 TK to 01864339154 and click Submit Payment Info below to submit details!)</i></blockquote>"
+        ),
+        "payment_notice_text_multi": (
+            "⚠️ <b>Free trial for 2 Months already used!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>🎁 <b>Combo Offer! (You have {count} emails)</b>\n"
+            "💸 <b>Send only 12 TK to extend ALL {count} emails for another 2 months:</b>\n\n"
+            "📱 <b>Bkash or Nagad (Send Money):</b>\n"
+            "<code>01864339154</code>\n\n"
+            "<i>(Send 12 TK to 01864339154 to extend ALL your {count} emails at once for another 2 months!)</i></blockquote>"
+        ),
+        "prompt_sender_number": (
+            "📱 <b>Submit Payment Details (Step 1/2)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>Enter the mobile number from which you sent <b>{amount} TK</b>.\n"
+            "<i>(Example: <code>01712345678</code>)</i></blockquote>\n\n"
+            "Type /cancel to abort."
+        ),
+        "prompt_trx_id": (
+            "📝 <b>Submit Transaction ID (Step 2/2)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>Enter your Bkash/Nagad <b>TrxID</b>.\n"
+            "<i>(Example: <code>9X8A7B6C5D</code>)</i></blockquote>\n\n"
+            "Type /cancel to abort."
+        ),
+        "payment_submitted_success": (
+            "🎉 <b>Payment claim successfully submitted!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>📧 <b>Target Email:</b> <code>{email}</code>\n"
+            "📱 <b>Sender Number:</b> <code>{sender_number}</code>\n"
+            "📝 <b>TrxID:</b> <code>{trx_id}</code>\n"
+            "💰 <b>Amount:</b> {amount} TK\n\n"
+            "<i>Once verified by Admin, your email validity will be extended by 2 months.</i></blockquote>"
+        ),
+        "admin_new_claim_alert": (
+            "📥 <b>NEW PAYMENT CLAIM RECEIVED! ({amount} TK)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>👤 <b>User:</b> {user_info} (ID: <code>{user_id}</code>)\n"
+            "📧 <b>Target Email:</b> <code>{email}</code>\n"
+            "📱 <b>Sender Number:</b> <code>{sender_number}</code>\n"
+            "📝 <b>TrxID:</b> <code>{trx_id}</code>\n"
+            "💰 <b>Amount:</b> {amount} TK</blockquote>"
+        ),
+        "user_payment_approved_notice": (
+            "🎉 <b>Your {amount} TK payment has been approved by Admin!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>📧 <b>Email:</b> <code>{email}</code>\n"
+            "⏳ <b>Validity:</b> Successfully extended by 2 months (60 days)!</blockquote>"
+        ),
+        "user_payment_rejected_notice": (
+            "❌ <b>Your payment claim was rejected!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>📧 <b>Email:</b> <code>{email}</code>\n"
+            "📝 <b>TrxID:</b> <code>{trx_id}</code>\n\n"
+            "<i>Please verify your TrxID and Sender Number and try again.</i></blockquote>"
+        ),
+        "email_expired_locked_notice": (
+            "⚠️ <b>Email validity (2 Months) has expired!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>🔒 <b>Inbox Access Blocked:</b>\n"
+            "This email expired on <code>{expires_at}</code>. Inbox access & messages remain locked until validity is renewed.\n\n"
+            "💸 <b>Click '🎁 Renew / Extend 2 Months' below to unlock and extend validity!</b>\n"
+            "<i>(Note: Accounts overdue by 5 days past expiry are permanently deleted from database.)</i></blockquote>"
+        ),
+        "email_overdue_deleted_notice": (
+            "🗑️ <b>Email permanently deleted!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>The account <code>{email}</code> passed the 5-day grace period after expiry without payment.\n\n"
+            "It has been permanently deleted from database & Supabase.</blockquote>"
+        ),
         "creating_mail": "⚡ <i>Creating email, please wait 1s...</i>",
         "creating_mail_toast": "⚡ Creating email address... Please wait 1s! 🚀",
         "mail_created_success": (
