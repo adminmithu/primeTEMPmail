@@ -1473,8 +1473,8 @@ async def process_2fa_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec)}</code> | <code>{code}</code>")
                 inline_buttons.append([
-                    InlineKeyboardButton(f"📋 {code}", callback_data=f"copy_otp:{code}", api_kwargs={"style": "success"}),
-                    InlineKeyboardButton(f"🔑 {clean_sec[:12]}", callback_data=f"copy_otp:{clean_sec}", api_kwargs={"style": "primary"})
+                    InlineKeyboardButton(f"📋 {code}", api_kwargs={"copy_text": {"text": code}, "style": "success"}),
+                    InlineKeyboardButton(f"🔑 {clean_sec[:12]}", api_kwargs={"copy_text": {"text": clean_sec}, "style": "primary"})
                 ])
 
         output_text = (
@@ -1516,9 +1516,10 @@ async def fast_2fa_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 results.append(f"<b>{idx}.</b> <code>{safe_html(clean_sec)}</code> | <code>{code}</code>")
                 inline_buttons.append([
-                    InlineKeyboardButton(f"📋 {code}", callback_data=f"copy_otp:{code}", api_kwargs={"style": "success"}),
-                    InlineKeyboardButton(f"🔑 {clean_sec[:12]}", callback_data=f"copy_otp:{clean_sec}", api_kwargs={"style": "primary"})
+                    InlineKeyboardButton(f"📋 {code}", api_kwargs={"copy_text": {"text": code}, "style": "success"}),
+                    InlineKeyboardButton(f"🔑 {clean_sec[:12]}", api_kwargs={"copy_text": {"text": clean_sec}, "style": "primary"})
                 ])
+
 
         output_text = (
             "🔑 <b>2FA Authenticator Output</b>\n"
