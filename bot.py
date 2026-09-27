@@ -1108,15 +1108,44 @@ async def process_broadcast_content(update: Update, context: ContextTypes.DEFAUL
     success_count = 0
     failed_count = 0
 
+    raw_text = msg.text or msg.caption or ""
+    html_text = msg.text_html if msg.text else (msg.caption_html if msg.caption else "")
+
     for u_id in users:
         try:
-            if msg.text and ("<" in msg.text or ">" in msg.text):
+            if msg.photo:
+                photo_id = msg.photo[-1].file_id
                 try:
-                    await context.bot.send_message(chat_id=u_id, text=msg.text, parse_mode="HTML", disable_web_page_preview=True)
+                    await context.bot.send_photo(chat_id=u_id, photo=photo_id, caption=raw_text, parse_mode="HTML")
                 except Exception:
+                    await context.bot.send_photo(chat_id=u_id, photo=photo_id, caption=html_text, parse_mode="HTML")
+            elif msg.document:
+                doc_id = msg.document.file_id
+                try:
+                    await context.bot.send_document(chat_id=u_id, document=doc_id, caption=raw_text, parse_mode="HTML")
+                except Exception:
+                    await context.bot.send_document(chat_id=u_id, document=doc_id, caption=html_text, parse_mode="HTML")
+            elif raw_text:
+                sent = False
+                if "<" in raw_text and ">" in raw_text:
+                    try:
+                        await context.bot.send_message(chat_id=u_id, text=raw_text, parse_mode="HTML", disable_web_page_preview=True)
+                        sent = True
+                    except Exception as parse_err:
+                        logger.warning(f"Raw HTML send failed: {parse_err}")
+
+                if not sent and html_text:
+                    try:
+                        await context.bot.send_message(chat_id=u_id, text=html_text, parse_mode="HTML", disable_web_page_preview=True)
+                        sent = True
+                    except Exception:
+                        pass
+
+                if not sent:
                     await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
             else:
                 await context.bot.copy_message(chat_id=u_id, from_chat_id=msg.chat_id, message_id=msg.message_id)
+
             success_count += 1
             await asyncio.sleep(0.04)
         except RetryAfter as r_err:
