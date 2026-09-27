@@ -1434,28 +1434,28 @@ async def auto_inbox_poller_task(app: Application):
                         await db.update_last_msg_id(u_id, email, latest_id)
 
                         detail = await mail_api.get_message_detail(token, latest_id, email=email)
-                            subject = detail.get("subject", "No Subject")
-                            sender = detail.get("from", {}).get("address", "Unknown")
-                            body_text = detail.get("text", "") or email_parser.clean_html_body(detail.get("html", [""])[0])
-                            
-                            otps = email_parser.extract_otp_codes(body_text)
+                        subject = detail.get("subject", "No Subject")
+                        sender = detail.get("from", {}).get("address", "Unknown")
+                        body_text = detail.get("text", "") or email_parser.clean_html_body(detail.get("html", [""])[0])
+                        
+                        otps = email_parser.extract_otp_codes(body_text)
 
-                            lang = await db.get_user_language(u_id)
-                            alert_msg = get_string(lang, "new_email_alert", email=safe_html(email), subject=safe_html(subject), sender=safe_html(sender))
-                            
-                            kb = []
-                            if otps:
-                                alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
-                                kb.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
+                        lang = await db.get_user_language(u_id)
+                        alert_msg = get_string(lang, "new_email_alert", email=safe_html(email), subject=safe_html(subject), sender=safe_html(sender))
+                        
+                        kb = []
+                        if otps:
+                            alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
+                            kb.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
 
-                            kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
-                            
-                            await app.bot.send_message(
-                                chat_id=u_id,
-                                text=alert_msg,
-                                parse_mode="HTML",
-                                reply_markup=InlineKeyboardMarkup(kb)
-                            )
+                        kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
+                        
+                        await app.bot.send_message(
+                            chat_id=u_id,
+                            text=alert_msg,
+                            parse_mode="HTML",
+                            reply_markup=InlineKeyboardMarkup(kb)
+                        )
                 except Exception as ex:
                     logger.debug(f"Polling check error for {email}: {ex}")
 

@@ -130,7 +130,7 @@ async def vercel_cron_job():
                 if latest_id and latest_id != last_msg_id:
                     await update_last_msg_id(u_id, email, latest_id)
 
-                    detail = await mail_api.get_message_detail(token, latest_id)
+                    detail = await mail_api.get_message_detail(token, latest_id, email=email)
                     subject = detail.get("subject", "No Subject")
                     sender = detail.get("from", {}).get("address", "Unknown")
                     body_text = detail.get("text", "") or email_parser.clean_html_body(detail.get("html", [""])[0])
