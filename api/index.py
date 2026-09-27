@@ -10,7 +10,7 @@ from telegram.ext import Application
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import BOT_TOKEN, ADMIN_ID, WEBHOOK_SECRET
-from database import init_db, get_all_active_accounts, update_last_msg_id, get_user_language
+from database import init_db, get_all_active_accounts, update_last_msg_id, get_user_language, update_account_token
 from mail_api import mail_api
 import parser as email_parser
 from locales import get_string
@@ -99,44 +99,61 @@ async def vercel_cron_job():
             token = acc["token"]
             last_msg_id = acc.get("last_msg_id")
 
+            if not token and acc.get("password"):
+                try:
+                    token = await mail_api.get_token(email, acc["password"])
+                    await update_account_token(u_id, email, token)
+                    acc["token"] = token
+                except Exception:
+                    continue
+
             if not token:
                 continue
 
             try:
                 msgs = await mail_api.get_messages(token)
-                if msgs:
-                    latest_msg = msgs[0]
-                    latest_id = latest_msg.get("id")
-
-                    if latest_id and latest_id != last_msg_id:
-                        await update_last_msg_id(u_id, email, latest_id)
-
-                        detail = await mail_api.get_message_detail(token, latest_id)
-                        subject = detail.get("subject", "No Subject")
-                        sender = detail.get("from", {}).get("address", "Unknown")
-                        body_text = detail.get("text", "") or email_parser.clean_html_body(detail.get("html", [""])[0])
-                        
-                        otps = email_parser.extract_otp_codes(body_text)
-
-                        lang = await get_user_language(u_id)
-                        alert_msg = get_string(lang, "new_email_alert", email=safe_html(email), subject=safe_html(subject), sender=safe_html(sender))
-                        
-                        kb = []
-                        if otps:
-                            alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
-                            kb.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
-
-                        kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
-                        
-                        await bot_app.bot.send_message(
-                            chat_id=u_id,
-                            text=alert_msg,
-                            parse_mode="HTML",
-                            reply_markup=InlineKeyboardMarkup(kb)
-                        )
-                        alert_sent_count += 1
             except Exception as ex:
-                logger.debug(f"Cron check error for {email}: {ex}")
+                if str(ex) == "UNAUTHORIZED" and acc.get("password"):
+                    try:
+                        token = await mail_api.get_token(email, acc["password"])
+                        await update_account_token(u_id, email, token)
+                        msgs = await mail_api.get_messages(token)
+                    except Exception:
+                        continue
+                else:
+                    continue
+
+            if msgs:
+                latest_msg = msgs[0]
+                latest_id = latest_msg.get("id")
+
+                if latest_id and latest_id != last_msg_id:
+                    await update_last_msg_id(u_id, email, latest_id)
+
+                    detail = await mail_api.get_message_detail(token, latest_id)
+                    subject = detail.get("subject", "No Subject")
+                    sender = detail.get("from", {}).get("address", "Unknown")
+                    body_text = detail.get("text", "") or email_parser.clean_html_body(detail.get("html", [""])[0])
+                    
+                    otps = email_parser.extract_otp_codes(body_text)
+
+                    lang = await get_user_language(u_id)
+                    alert_msg = get_string(lang, "new_email_alert", email=safe_html(email), subject=safe_html(subject), sender=safe_html(sender))
+                    
+                    kb = []
+                    if otps:
+                        alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
+                        kb.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
+
+                    kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
+                    
+                    await bot_app.bot.send_message(
+                        chat_id=u_id,
+                        text=alert_msg,
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(kb)
+                    )
+                    alert_sent_count += 1
 
     except Exception as e:
         logger.error(f"Error in Vercel cron handler: {e}")

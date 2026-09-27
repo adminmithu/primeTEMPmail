@@ -126,6 +126,34 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=get_main_reply_keyboard(lang, user.id)
     )
 
+async def ensure_valid_token(user_id: int, acc: dict) -> str:
+    """Ensure account has a valid JWT token, auto-refreshing using password if expired."""
+    if not acc:
+        return None
+    token = acc.get("token")
+    email = acc.get("email")
+    password = acc.get("password")
+
+    if token:
+        try:
+            await mail_api.get_messages(token)
+            return token
+        except Exception as e:
+            if str(e) != "UNAUTHORIZED":
+                return token
+
+    if email and password:
+        try:
+            new_token = await mail_api.get_token(email, password)
+            if new_token:
+                await db.update_account_token(user_id, email, new_token)
+                acc["token"] = new_token
+                return new_token
+        except Exception as e:
+            logger.error(f"Auto token refresh failed for {email}: {e}")
+
+    return token
+
 async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, custom_name: str = None):
     user_id = update.effective_user.id
     lang = await db.get_user_language(user_id)
@@ -139,26 +167,63 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
     try:
         domains = await mail_api.get_domains()
         if not domains:
-            err_msg = "❌ No active domains found."
+            await asyncio.sleep(0.5)
+            domains = await mail_api.get_domains()
+
+        if not domains:
+            err_msg = "❌ সার্ভিস সাময়িকভাবে ব্যস্ত। অনুগ্রহ করে কয়েক সেকেন্ড পর আবার চেষ্টা করুন।"
             if msg: await msg.edit_text(err_msg)
             else: await context.bot.send_message(chat_id=user_id, text=err_msg)
             return
 
-        selected_domain = domains[0]
+        password = generate_secure_password(12)
+        created_acc = None
+        full_email = ""
+        account_id = ""
+
+        # Build candidate emails with domain fallback & username collision protection
+        candidates = []
         if custom_name:
-            clean_name = re.sub(r'[^a-z0-9]', '', custom_name).lower()[:15]
+            clean_name = re.sub(r'[^a-z0-9._-]', '', custom_name.lower()).strip('._-')[:20]
             if len(clean_name) < 3:
                 clean_name = f"{clean_name}{generate_random_string(4)}"
-            full_email = f"{clean_name}@{selected_domain}"
 
+            # 1. Try exact custom name across all available domains
+            for d in domains:
+                candidates.append(f"{clean_name}@{d}")
+            # 2. If taken, try custom name + digits across all domains
+            for d in domains:
+                candidates.append(f"{clean_name}{random.randint(10, 999)}@{d}")
+            for d in domains:
+                candidates.append(f"{clean_name}_{generate_random_string(3)}@{d}")
         else:
-            random_username = generate_professional_username()
-            full_email = f"{random_username}@{selected_domain}"
-            
-        password = generate_secure_password(12)
+            # Professional random names across active domains
+            for _ in range(5):
+                r_user = generate_professional_username()
+                for d in domains:
+                    candidates.append(f"{r_user}@{d}")
 
-        acc_data = await mail_api.create_account(full_email, password)
-        account_id = acc_data.get("id", "")
+        last_error = ""
+        for email_cand in candidates:
+            try:
+                acc_data = await mail_api.create_account(email_cand, password)
+                created_acc = acc_data
+                full_email = email_cand
+                account_id = acc_data.get("id", "")
+                break
+            except ValueError as ve:
+                last_error = str(ve)
+                continue
+            except Exception as ex:
+                last_error = str(ex)
+                continue
+
+        if not created_acc or not full_email:
+            full_email = f"user_{generate_random_string(8)}@{domains[0]}"
+            acc_data = await mail_api.create_account(full_email, password)
+            created_acc = acc_data
+            account_id = acc_data.get("id", "")
+
         token = await mail_api.get_token(full_email, password)
 
         await db.save_account(
@@ -168,6 +233,7 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
             token=token,
             account_id=account_id
         )
+        await db.set_active_account(user_id, full_email)
 
         response_text = get_string(lang, "mail_created_success", email=safe_html(full_email), password=safe_html(password))
 
@@ -189,8 +255,11 @@ async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, cu
 
     except Exception as e:
         logger.error(f"Error creating mail: {e}")
+        err_msg = f"❌ Error creating mail: {safe_html(str(e))}"
         if msg:
-            await msg.edit_text(f"❌ Error: {safe_html(str(e))}")
+            await msg.edit_text(err_msg)
+        else:
+            await context.bot.send_message(chat_id=user_id, text=err_msg)
 
 async def start_custom_name_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -311,28 +380,15 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
             await update.message.reply_text(lock_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
         return
 
-    token = acc.get("token")
+    token = await ensure_valid_token(user_id, acc)
     if not token:
-        try:
-            token = await mail_api.get_token(acc["email"], acc["password"])
-            await db.update_account_token(user_id, acc["email"], token)
-        except Exception:
-            if query: await query.answer("Login failed!", show_alert=True)
-            return
+        if query: await query.answer("Session refresh failed!", show_alert=True)
+        return
 
     try:
         messages = await mail_api.get_messages(token)
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            try:
-                token = await mail_api.get_token(acc["email"], acc["password"])
-                await db.update_account_token(user_id, acc["email"], token)
-                messages = await mail_api.get_messages(token)
-            except Exception:
-                if query: await query.answer("Session expired!", show_alert=True)
-                return
-        else:
-            messages = []
+        messages = []
 
     if messages:
         await db.update_last_msg_id(user_id, target_email, messages[0].get("id"))
@@ -403,8 +459,8 @@ async def read_full_message(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     query = update.callback_query
 
     acc = await db.get_account(user_id, email)
-    if not acc or not acc.get("token"):
-        if query: await query.answer("Session error!", show_alert=True)
+    if not acc:
+        if query: await query.answer("Account not found!", show_alert=True)
         return
 
     exp_status, exp_dt = db.check_account_expiry_status(acc)
@@ -412,13 +468,27 @@ async def read_full_message(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         if query: await query.answer("🔒 Message locked! Renew email validity to read messages.", show_alert=True)
         return
 
-    await query.answer("Loading message...")
+    if query: await query.answer("Loading message...")
+
+    token = await ensure_valid_token(user_id, acc)
+    if not token:
+        await query.message.edit_text("❌ Session error! Unable to authenticate account.")
+        return
 
     try:
-        msg_detail = await mail_api.get_message_detail(acc["token"], msg_id)
+        msg_detail = await mail_api.get_message_detail(token, msg_id)
     except Exception as e:
-        await query.message.edit_text(f"❌ Load error: {safe_html(str(e))}")
-        return
+        if str(e) == "UNAUTHORIZED" and acc.get("password"):
+            try:
+                token = await mail_api.get_token(acc["email"], acc["password"])
+                await db.update_account_token(user_id, acc["email"], token)
+                msg_detail = await mail_api.get_message_detail(token, msg_id)
+            except Exception:
+                await query.message.edit_text("❌ Session expired!")
+                return
+        else:
+            await query.message.edit_text(f"❌ Load error: {safe_html(str(e))}")
+            return
 
     subject = msg_detail.get("subject", "No Subject")
     sender = msg_detail.get("from", {}).get("address", "Unknown")
@@ -1196,11 +1266,29 @@ async def auto_inbox_poller_task(app: Application):
                 token = acc["token"]
                 last_msg_id = acc.get("last_msg_id")
 
+                if not token and acc.get("password"):
+                    try:
+                        token = await mail_api.get_token(email, acc["password"])
+                        await db.update_account_token(u_id, email, token)
+                        acc["token"] = token
+                    except Exception:
+                        continue
+
                 if not token:
                     continue
 
                 try:
                     msgs = await mail_api.get_messages(token)
+                except Exception as ex:
+                    if str(ex) == "UNAUTHORIZED" and acc.get("password"):
+                        try:
+                            token = await mail_api.get_token(email, acc["password"])
+                            await db.update_account_token(u_id, email, token)
+                            msgs = await mail_api.get_messages(token)
+                        except Exception:
+                            continue
+                    else:
+                        continue
                     if msgs:
                         latest_msg = msgs[0]
                         latest_id = latest_msg.get("id")
@@ -1424,24 +1512,30 @@ async def start_login_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     return WAITING_FOR_LOGIN_INPUT
 
-MENU_BUTTON_TEXTS = {
+MENU_KEYWORDS = [
     "Create Custom Mail", "Create Random Mail", "Saved Mails", "Current Inbox",
     "Export TXT", "Login Account", "Restore Mail", "Language", "Help", "Admin",
-    "📊 Live Stats", "📄 Export Users List", "🚫 Ban User", "📋 Banned Users",
-    "💳 Pending Payments", "📢 Broadcast", "👑 Toggle VIP", "💾 DB Backup", "🔙 Back to User Menu", "2FA",
-    "🔑 2FA Authenticator", "👤 My Profile", "Profile", "Admin Control", "Admin Panel"
-}
+    "Live Stats", "Export Users List", "Ban User", "Banned Users",
+    "Pending Payments", "Broadcast", "Toggle VIP", "DB Backup", "Back to User Menu",
+    "2FA", "Authenticator", "Profile", "ভাষা"
+]
 
 def is_menu_navigation(text: str) -> bool:
     if not text:
         return False
     t = text.strip()
-    return t in MENU_BUTTON_TEXTS or t.startswith("/")
+    if t.startswith("/"):
+        return True
+    for kw in MENU_KEYWORDS:
+        if kw in t:
+            return True
+    return False
 
 async def cancel_and_route_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip() if update.message and update.message.text else ""
     if "Create Custom Mail" in text:
-        return await start_custom_name_prompt(update, context)
+        await start_custom_name_prompt(update, context)
+        return WAITING_FOR_CUSTOM_NAME
     elif "Create Random Mail" in text:
         await create_new_mail(update, context)
     elif "Saved Mails" in text:
@@ -1451,10 +1545,12 @@ async def cancel_and_route_menu(update: Update, context: ContextTypes.DEFAULT_TY
     elif "Export TXT" in text:
         await export_txt_command(update, context)
     elif "Login Account" in text or "Restore Mail" in text:
-        return await start_login_prompt(update, context)
-    elif "2FA" in text or "2fa" in text:
-        return await start_2fa_prompt(update, context)
-    elif "Language" in text:
+        await start_login_prompt(update, context)
+        return WAITING_FOR_LOGIN_INPUT
+    elif "2FA" in text or "2fa" in text or "Authenticator" in text:
+        await start_2fa_prompt(update, context)
+        return WAITING_FOR_2FA_INPUT
+    elif "Language" in text or "ভাষা" in text:
         await toggle_language(update, context)
     elif "Profile" in text or "profile" in text:
         await my_profile_command(update, context)
@@ -1650,7 +1746,7 @@ def setup_bot_application(token: str) -> Application:
     app = Application.builder().token(token).request(request).post_init(_post_init_hook).build()
 
     menu_fallback = MessageHandler(
-        filters.Regex(r"^(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu|2FA|🔑 2FA Authenticator|👤 My Profile|Profile)$"),
+        filters.Regex(r".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu|2FA|Authenticator|Profile|language|ভাষা).*"),
         cancel_and_route_menu
     )
 
