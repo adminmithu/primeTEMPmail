@@ -100,9 +100,32 @@ def get_main_reply_keyboard(lang: str = "bn", user_id: int = None):
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
+async def is_in_maintenance(user_id: int) -> bool:
+    if int(user_id) == ADMIN_ID:
+        return False
+    val = await db.get_setting("maintenance_mode", "0")
+    return val == "1"
+
+async def show_maintenance_notice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    maint_text = (
+        "🚧 <b>সিস্টেম রক্ষণাবেক্ষণ ও আপগ্রেড চলছে!</b>\n\n"
+        "আমাদের সার্ভিস আরো দ্রুত এবং উন্নত করতে বটের কিছু গুরুত্বপূর্ণ টেকনিক্যাল আপডেট এর কাজ চলছে।\n\n"
+        "⏰ <b>মেসেজ/ইনবক্স সার্ভিস খুব শীঘ্রই সম্পূর্ণ চালু হবে।</b>\n"
+        "অনুগ্রহ করে কিছু সময় পর আবার চেষ্টা করুন। ধৈর্য ধরার জন্য ধন্যবাদ! ❤️"
+    )
+    if update.callback_query:
+        await update.callback_query.answer("🚧 Maintenance Mode Active!", show_alert=True)
+        try:
+            await update.callback_query.edit_message_text(maint_text, parse_mode="HTML")
+        except Exception:
+            await context.bot.send_message(chat_id=update.effective_user.id, text=maint_text, parse_mode="HTML")
+    elif update.message:
+        await update.message.reply_text(maint_text, parse_mode="HTML")
+
 def get_admin_reply_keyboard(lang: str = "bn"):
     rows = [
         [KeyboardButton("📊 Live Stats", api_kwargs={"style": "primary"}), KeyboardButton("📄 Export Users List", api_kwargs={"style": "primary"})],
+        [KeyboardButton("⚙️ Mail Provider", api_kwargs={"style": "success"}), KeyboardButton("🚧 Maintenance Mode", api_kwargs={"style": "danger"})],
         [KeyboardButton("🚫 Ban User", api_kwargs={"style": "danger"}), KeyboardButton("📋 Banned Users", api_kwargs={"style": "danger"})],
         [KeyboardButton("💳 Pending Payments", api_kwargs={"style": "success"}), KeyboardButton("📢 Broadcast", api_kwargs={"style": "primary"})],
         [KeyboardButton("👑 Toggle VIP", api_kwargs={"style": "success"}), KeyboardButton("💾 DB Backup", api_kwargs={"style": "primary"})],
@@ -117,6 +140,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = await db.get_user_language(user.id)
     if await db.is_user_banned(user.id):
         await update.message.reply_text(get_string(lang, "user_banned_notice"), parse_mode="HTML")
+        return
+
+    if await is_in_maintenance(user.id):
+        await show_maintenance_notice(update, context)
         return
 
     welcome_text = get_string(lang, "welcome", name=safe_html(user.first_name))
@@ -156,6 +183,9 @@ async def ensure_valid_token(user_id: int, acc: dict) -> str:
 
 async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, custom_name: str = None):
     user_id = update.effective_user.id
+    if await is_in_maintenance(user_id):
+        await show_maintenance_notice(update, context)
+        return
     lang = await db.get_user_language(user_id)
     
     msg = None
@@ -386,7 +416,7 @@ async def switch_account_and_view_inbox(update: Update, context: ContextTypes.DE
         return
 
     try:
-        messages = await mail_api.get_messages(token)
+        messages = await mail_api.get_messages(token, email=target_email)
     except Exception as e:
         messages = []
 
@@ -476,13 +506,13 @@ async def read_full_message(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         return
 
     try:
-        msg_detail = await mail_api.get_message_detail(token, msg_id)
+        msg_detail = await mail_api.get_message_detail(token, msg_id, email=email)
     except Exception as e:
         if str(e) == "UNAUTHORIZED" and acc.get("password"):
             try:
                 token = await mail_api.get_token(acc["email"], acc["password"])
                 await db.update_account_token(user_id, acc["email"], token)
-                msg_detail = await mail_api.get_message_detail(token, msg_id)
+                msg_detail = await mail_api.get_message_detail(token, msg_id, email=email)
             except Exception:
                 await query.message.edit_text("❌ Session expired!")
                 return
@@ -828,6 +858,83 @@ async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     keyboard = [[InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel", api_kwargs={"style": "primary"})]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+async def admin_provider_settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID and (update.callback_query is None or update.effective_user.id != ADMIN_ID):
+        return
+
+    current_prov = await db.get_setting("mail_provider", "auto")
+    mail_api.active_provider = current_prov
+
+    prov_name_map = {
+        "mail_tm": "Mail.tm (Primary API)",
+        "mail_gw": "Mail.gw (Backup API)",
+        "1secmail": "1SecMail (Open API)",
+        "auto": "⚡ Auto-Failover (Multi-API Auto-Switch)"
+    }
+    base_url_map = {
+        "mail_tm": "https://api.mail.tm",
+        "mail_gw": "https://api.mail.gw",
+        "1secmail": "https://www.1secmail.com/api/v1/",
+        "auto": "Mail.tm ➔ Mail.gw ➔ 1SecMail"
+    }
+
+    active_name = prov_name_map.get(current_prov, "Auto-Failover")
+    active_url = base_url_map.get(current_prov, "https://api.mail.tm")
+
+    text = (
+        "⚙️ <b>Mail Provider & API Settings</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"<blockquote>📌 <b>বর্তমান সক্রিয় প্রোভাইডার:</b> <b>{active_name}</b>\n"
+        f"🌐 <b>API Base Endpoint:</b> <code>{active_url}</code>\n"
+        f"⚡ <b>অটো-সুইচিং:</b> <b>{'সক্রিয় (Active)' if current_prov == 'auto' else 'ম্যানুয়াল (Manual)'}</b></blockquote>\n\n"
+        "<i>নিচের বাটন চেপে আপনার পছন্দের ইমেইল এপিআই প্রোভাইডার নির্বাচন বা অন/অফ করুন:</i>"
+    )
+
+    kb = [
+        [InlineKeyboardButton(f"{'🟢' if current_prov == 'mail_tm' else '⚪'} 1. Mail.tm (Primary)", callback_data="set_prov:mail_tm")],
+        [InlineKeyboardButton(f"{'🔵' if current_prov == 'mail_gw' else '⚪'} 2. Mail.gw (Backup API)", callback_data="set_prov:mail_gw")],
+        [InlineKeyboardButton(f"{'🟠' if current_prov == '1secmail' else '⚪'} 3. 1SecMail (Open API)", callback_data="set_prov:1secmail")],
+        [InlineKeyboardButton(f"{'⚡' if current_prov == 'auto' else '⚪'} 4. Auto-Failover (Smart Auto-Switch)", callback_data="set_prov:auto")],
+        [InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(kb)
+
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+async def admin_maintenance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID and (update.callback_query is None or update.effective_user.id != ADMIN_ID):
+        return
+
+    val = await db.get_setting("maintenance_mode", "0")
+    status_str = "🔴 <b>সক্রিয় (ON - রক্ষণাবেক্ষণ চলছে)</b>" if val == "1" else "🟢 <b>বন্ধ (OFF - স্বাভাবিক সার্ভিস চালু)</b>"
+    btn_text = "🟢 Turn OFF Maintenance Mode" if val == "1" else "🔴 Turn ON Maintenance Mode"
+    next_val = "0" if val == "1" else "1"
+
+    text = (
+        "🚧 <b>Maintenance Mode Control</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📌 <b>বর্তমান স্ট্যাটাস:</b> {status_str}\n\n"
+        "<i>Maintenance Mode ON থাকলে সাধারণ ব্যবহারকারীরা বটের সার্ভিস ব্যবহার করতে পারবে না এবং রক্ষণাবেক্ষণের নোটিশ দেখতে পাবে। এডমিন সকল কমান্ড ব্যবহার করতে পারবে।</i>"
+    )
+
+    kb = [
+        [InlineKeyboardButton(btn_text, callback_data=f"toggle_maint:{next_val}")],
+        [InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(kb)
 
     if update.callback_query:
         await update.callback_query.answer()
@@ -1307,25 +1414,26 @@ async def auto_inbox_poller_task(app: Application):
                     continue
 
                 try:
-                    msgs = await mail_api.get_messages(token)
+                    msgs = await mail_api.get_messages(token, email=email)
                 except Exception as ex:
                     if str(ex) == "UNAUTHORIZED" and acc.get("password"):
                         try:
                             token = await mail_api.get_token(email, acc["password"])
                             await db.update_account_token(u_id, email, token)
-                            msgs = await mail_api.get_messages(token)
+                            msgs = await mail_api.get_messages(token, email=email)
                         except Exception:
                             continue
                     else:
                         continue
-                    if msgs:
-                        latest_msg = msgs[0]
-                        latest_id = latest_msg.get("id")
 
-                        if latest_id and latest_id != last_msg_id:
-                            await db.update_last_msg_id(u_id, email, latest_id)
+                if msgs:
+                    latest_msg = msgs[0]
+                    latest_id = latest_msg.get("id")
 
-                            detail = await mail_api.get_message_detail(token, latest_id)
+                    if latest_id and latest_id != last_msg_id:
+                        await db.update_last_msg_id(u_id, email, latest_id)
+
+                        detail = await mail_api.get_message_detail(token, latest_id, email=email)
                             subject = detail.get("subject", "No Subject")
                             sender = detail.get("from", {}).get("address", "Unknown")
                             body_text = detail.get("text", "") or email_parser.clean_html_body(detail.get("html", [""])[0])
@@ -1359,6 +1467,12 @@ async def auto_inbox_poller_task(app: Application):
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
+    user_id = update.effective_user.id
+
+    if user_id != ADMIN_ID:
+        if await is_in_maintenance(user_id):
+            await show_maintenance_notice(update, context)
+            return
 
     if data == "cmd_create":
         await create_new_mail(update, context)
@@ -1492,6 +1606,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=get_main_reply_keyboard(lang, user_id))
     elif data == "admin_panel":
         await admin_panel_command(update, context)
+    elif data == "admin_provider_settings":
+        await admin_provider_settings_command(update, context)
+    elif data == "admin_maintenance":
+        await admin_maintenance_command(update, context)
+    elif data.startswith("toggle_maint:"):
+        next_val = data.split(":", 1)[1]
+        await db.set_setting("maintenance_mode", next_val)
+        status_msg = "Maintenance Mode Turned ON!" if next_val == "1" else "Maintenance Mode Turned OFF!"
+        await query.answer(status_msg, show_alert=True)
+        await admin_maintenance_command(update, context)
+    elif data.startswith("set_prov:"):
+        new_prov = data.split(":", 1)[1]
+        await db.set_setting("mail_provider", new_prov)
+        mail_api.active_provider = new_prov
+        await query.answer("✅ Mail Provider updated!", show_alert=True)
+        await admin_provider_settings_command(update, context)
     elif data == "admin_stats":
         await admin_stats_command(update, context)
     elif data == "admin_export_users":
@@ -1767,6 +1897,11 @@ async def direct_2fa_secret_handler(update: Update, context: ContextTypes.DEFAUL
         return await fast_2fa_command(update, context)
 
 async def _post_init_hook(app: Application):
+    try:
+        prov = await db.get_setting("mail_provider", "auto")
+        mail_api.active_provider = prov
+    except Exception:
+        pass
     asyncio.create_task(auto_inbox_poller_task(app))
 
 def setup_bot_application(token: str) -> Application:
@@ -1915,6 +2050,8 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(broadcast_conv)
 
     app.add_handler(MessageHandler(filters.Regex(".*(Admin Control|Admin Panel).*"), admin_panel_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Mail Provider.*"), admin_provider_settings_command))
+    app.add_handler(MessageHandler(filters.Regex(".*Maintenance Mode.*"), admin_maintenance_command))
     app.add_handler(MessageHandler(filters.Regex(".*Live Stats.*"), admin_stats_command))
     app.add_handler(MessageHandler(filters.Regex(".*Export Users List.*"), admin_export_users_command))
     app.add_handler(MessageHandler(filters.Regex(".*Banned Users.*"), show_banned_list_command))

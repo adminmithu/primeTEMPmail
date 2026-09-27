@@ -13,9 +13,10 @@ HEADERS = {
 
 class MailTmAPI:
     def __init__(self):
-        self.base_url = MAIL_TM_API_BASE.rstrip("/")
+        self.default_base_url = MAIL_TM_API_BASE.rstrip("/")
         self.timeout = httpx.Timeout(15.0, connect=10.0)
         self._client = None
+        self.active_provider = "auto"  # 'mail_tm', 'mail_gw', 'auto'
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -27,144 +28,253 @@ class MailTmAPI:
             )
         return self._client
 
-    async def get_domains(self, retries: int = 3) -> list:
-        """Fetch list of available active domains from Mail.tm with retries."""
+    def get_base_urls(self) -> list:
+        """Return priority list of API endpoints based on active provider setting."""
+        if self.active_provider == "mail_gw":
+            return ["https://api.mail.gw", "https://api.mail.tm"]
+        elif self.active_provider == "mail_tm":
+            return ["https://api.mail.tm", "https://api.mail.gw"]
+        else: # 'auto'
+            return ["https://api.mail.tm", "https://api.mail.gw"]
+
+    async def get_1secmail_domains(self) -> list:
+        """Fetch active domain list from 1SecMail API."""
         client = self._get_client()
-        for attempt in range(retries):
-            try:
-                res = await client.get(f"{self.base_url}/domains")
-                if res.status_code == 200:
-                    data = res.json()
-                    if isinstance(data, list):
-                        members = data
-                    elif isinstance(data, dict):
-                        members = data.get("hydra:member", []) or data.get("member", []) or data.get("domains", [])
-                    else:
-                        members = []
+        try:
+            res = await client.get("https://www.1secmail.com/api/v1/?action=getDomainList")
+            if res.status_code == 200:
+                domains = res.json()
+                if isinstance(domains, list) and len(domains) > 0:
+                    return domains
+        except Exception as e:
+            logger.warning(f"1SecMail fetch domains error: {e}")
+        return ["1secmail.com", "1secmail.org", "1secmail.net"]
 
-                    active_domains = []
-                    for d in members:
-                        if isinstance(d, dict) and d.get("isActive", True):
-                            domain_str = d.get("domain")
-                            if domain_str:
-                                active_domains.append(domain_str)
-                        elif isinstance(d, str):
-                            active_domains.append(d)
-
-                    if active_domains:
-                        return active_domains
-                else:
-                    logger.warning(f"Fetch domains status {res.status_code} (attempt {attempt+1}/{retries})")
-            except Exception as e:
-                logger.warning(f"Fetch domains error: {e} (attempt {attempt+1}/{retries})")
-            if attempt < retries - 1:
-                await asyncio.sleep(0.5)
+    async def get_1secmail_messages(self, email: str) -> list:
+        """Fetch inbox message summary list from 1SecMail API for given email."""
+        if "@" not in email:
+            return []
+        login, domain = email.split("@", 1)
+        client = self._get_client()
+        try:
+            url = f"https://www.1secmail.com/api/v1/?action=getMessages&login={login}&domain={domain}"
+            res = await client.get(url)
+            if res.status_code == 200:
+                raw_msgs = res.json()
+                formatted_msgs = []
+                for m in raw_msgs:
+                    formatted_msgs.append({
+                        "id": str(m.get("id")),
+                        "from": {"address": m.get("from", "Unknown"), "name": m.get("from", "Unknown")},
+                        "subject": m.get("subject", "No Subject"),
+                        "createdAt": m.get("date", ""),
+                        "intro": m.get("subject", "")
+                    })
+                return formatted_msgs
+        except Exception as e:
+            logger.warning(f"1SecMail get messages error for {email}: {e}")
         return []
+
+    async def get_1secmail_message_detail(self, email: str, msg_id: str) -> dict:
+        """Fetch full details of a specific email message from 1SecMail API."""
+        if "@" not in email:
+            return {}
+        login, domain = email.split("@", 1)
+        client = self._get_client()
+        try:
+            url = f"https://www.1secmail.com/api/v1/?action=readMessage&login={login}&domain={domain}&id={msg_id}"
+            res = await client.get(url)
+            if res.status_code == 200:
+                data = res.json()
+                return {
+                    "id": str(data.get("id")),
+                    "from": {"address": data.get("from", "Unknown"), "name": data.get("from", "Unknown")},
+                    "subject": data.get("subject", "No Subject"),
+                    "createdAt": data.get("date", ""),
+                    "text": data.get("textBody", "") or data.get("body", ""),
+                    "html": [data.get("htmlBody", "")] if data.get("htmlBody") else []
+                }
+        except Exception as e:
+            logger.warning(f"1SecMail get message detail error for {email}:{msg_id}: {e}")
+        return {}
+
+    async def get_domains(self, retries: int = 2) -> list:
+        """Fetch list of available active domains from active provider with retries & failover."""
+        if self.active_provider == "1secmail":
+            return await self.get_1secmail_domains()
+
+        client = self._get_client()
+        base_urls = self.get_base_urls()
+        active_domains = []
+        for base_url in base_urls:
+            for attempt in range(retries):
+                try:
+                    res = await client.get(f"{base_url}/domains")
+                    if res.status_code == 200:
+                        data = res.json()
+                        if isinstance(data, list):
+                            members = data
+                        elif isinstance(data, dict):
+                            members = data.get("hydra:member", []) or data.get("member", []) or data.get("domains", [])
+                        else:
+                            members = []
+
+                        for d in members:
+                            if isinstance(d, dict) and d.get("isActive", True):
+                                domain_str = d.get("domain")
+                                if domain_str and domain_str not in active_domains:
+                                    active_domains.append(domain_str)
+                            elif isinstance(d, str) and d not in active_domains:
+                                active_domains.append(d)
+
+                        if active_domains:
+                            break
+                    else:
+                        logger.warning(f"Fetch domains [{base_url}] status {res.status_code} (attempt {attempt+1}/{retries})")
+                except Exception as e:
+                    logger.warning(f"Fetch domains [{base_url}] error: {e} (attempt {attempt+1}/{retries})")
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.5)
+
+        if not active_domains or self.active_provider == "auto":
+            sec_domains = await self.get_1secmail_domains()
+            for sd in sec_domains:
+                if sd not in active_domains:
+                    active_domains.append(sd)
+
+        return active_domains
 
     async def create_account(self, address: str, password: str, retries: int = 2) -> dict:
-        """Create a new temporary email account."""
+        """Create a new temporary email account with multi-endpoint failover."""
+        sec_domains = ["1secmail.com", "1secmail.org", "1secmail.net", "vmail.dev", "kzclip.com", "vq2.org"]
+        if "@" in address and address.split("@", 1)[1].lower() in sec_domains:
+            return {"id": "1secmail", "address": address}
+
         client = self._get_client()
         payload = {"address": address, "password": password}
-        for attempt in range(retries):
-            try:
-                res = await client.post(f"{self.base_url}/accounts", json=payload)
-                if res.status_code in (200, 201):
-                    return res.json()
-                elif res.status_code == 422:
-                    err_json = res.json()
-                    violations = err_json.get("violations", [])
-                    msg = violations[0].get("message") if violations else (err_json.get("detail") or "Account already exists")
-                    raise ValueError(f"EXISTS: {msg}")
-                else:
-                    logger.warning(f"Create account status {res.status_code}: {res.text}")
-            except ValueError:
-                raise
-            except Exception as e:
-                logger.warning(f"Create account attempt {attempt+1} failed: {e}")
-            if attempt < retries - 1:
-                await asyncio.sleep(0.5)
-        raise Exception(f"Failed to create account for {address}")
+        base_urls = self.get_base_urls()
+        for base_url in base_urls:
+            for attempt in range(retries):
+                try:
+                    res = await client.post(f"{base_url}/accounts", json=payload)
+                    if res.status_code in (200, 201):
+                        return res.json()
+                    elif res.status_code == 422:
+                        err_json = res.json()
+                        violations = err_json.get("violations", [])
+                        msg = violations[0].get("message") if violations else (err_json.get("detail") or "Account already exists")
+                        raise ValueError(f"EXISTS: {msg}")
+                    else:
+                        logger.warning(f"Create account [{base_url}] status {res.status_code}: {res.text}")
+                except ValueError:
+                    raise
+                except Exception as e:
+                    logger.warning(f"Create account [{base_url}] attempt {attempt+1} failed: {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.5)
+        return {"id": "1secmail", "address": address}
 
-    async def get_token(self, address: str, password: str, retries: int = 3) -> str:
-        """Authenticate account credentials and get Bearer JWT Token."""
+    async def get_token(self, address: str, password: str, retries: int = 2) -> str:
+        """Authenticate account credentials and get Bearer JWT Token with multi-endpoint failover."""
+        sec_domains = ["1secmail.com", "1secmail.org", "1secmail.net", "vmail.dev", "kzclip.com", "vq2.org"]
+        if "@" in address and address.split("@", 1)[1].lower() in sec_domains:
+            return "1secmail"
+
         client = self._get_client()
         payload = {"address": address, "password": password}
-        for attempt in range(retries):
-            try:
-                res = await client.post(f"{self.base_url}/token", json=payload)
-                if res.status_code == 200:
-                    data = res.json()
-                    return data.get("token", "")
-            except Exception as e:
-                logger.warning(f"Get token attempt {attempt+1} failed: {e}")
-            if attempt < retries - 1:
-                await asyncio.sleep(0.5)
-        logger.error(f"Failed to get token for {address}")
-        raise Exception("Invalid email or password. Login failed.")
+        base_urls = self.get_base_urls()
+        for base_url in base_urls:
+            for attempt in range(retries):
+                try:
+                    res = await client.post(f"{base_url}/token", json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        return data.get("token", "")
+                except Exception as e:
+                    logger.warning(f"Get token [{base_url}] attempt {attempt+1} failed: {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.5)
+        return "1secmail"
 
-    async def get_messages(self, token: str, page: int = 1, retries: int = 2) -> list:
-        """Fetch inbox message summary list for the authenticated token."""
+    async def get_messages(self, token: str, page: int = 1, retries: int = 2, email: str = "") -> list:
+        """Fetch inbox message summary list for the authenticated token with multi-endpoint failover."""
+        if token == "1secmail" or (email and any(d in email.lower() for d in ["1secmail.com", "1secmail.org", "1secmail.net", "vmail.dev", "kzclip.com", "vq2.org"])):
+            return await self.get_1secmail_messages(email)
+
         client = self._get_client()
         headers = {"Authorization": f"Bearer {token}"}
-        for attempt in range(retries):
-            try:
-                res = await client.get(f"{self.base_url}/messages?page={page}", headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    if isinstance(data, list):
-                        return data
-                    elif isinstance(data, dict):
-                        return data.get("hydra:member", []) or data.get("member", []) or []
-                elif res.status_code == 401:
-                    raise Exception("UNAUTHORIZED")
-            except Exception as e:
-                if str(e) == "UNAUTHORIZED":
-                    raise
-                logger.warning(f"Get messages attempt {attempt+1} failed: {e}")
-            if attempt < retries - 1:
-                await asyncio.sleep(0.5)
+        base_urls = self.get_base_urls()
+        for base_url in base_urls:
+            for attempt in range(retries):
+                try:
+                    res = await client.get(f"{base_url}/messages?page={page}", headers=headers)
+                    if res.status_code == 200:
+                        data = res.json()
+                        if isinstance(data, list):
+                            return data
+                        elif isinstance(data, dict):
+                            return data.get("hydra:member", []) or data.get("member", []) or []
+                    elif res.status_code == 401:
+                        raise Exception("UNAUTHORIZED")
+                except Exception as e:
+                    if str(e) == "UNAUTHORIZED":
+                        raise
+                    logger.warning(f"Get messages [{base_url}] attempt {attempt+1} failed: {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.5)
         return []
 
-    async def get_message_detail(self, token: str, message_id: str, retries: int = 2) -> dict:
-        """Fetch full details (including body text/html) of a specific email message."""
+    async def get_message_detail(self, token: str, message_id: str, retries: int = 2, email: str = "") -> dict:
+        """Fetch full details of a specific email message with multi-endpoint failover."""
+        if token == "1secmail" or (email and any(d in email.lower() for d in ["1secmail.com", "1secmail.org", "1secmail.net", "vmail.dev", "kzclip.com", "vq2.org"])):
+            return await self.get_1secmail_message_detail(email, message_id)
+
         client = self._get_client()
         headers = {"Authorization": f"Bearer {token}"}
-        for attempt in range(retries):
-            try:
-                res = await client.get(f"{self.base_url}/messages/{message_id}", headers=headers)
-                if res.status_code == 200:
-                    return res.json()
-                elif res.status_code == 401:
-                    raise Exception("UNAUTHORIZED")
-            except Exception as e:
-                if str(e) == "UNAUTHORIZED":
-                    raise
-                logger.warning(f"Get message detail attempt {attempt+1} failed: {e}")
-            if attempt < retries - 1:
-                await asyncio.sleep(0.5)
+        base_urls = self.get_base_urls()
+        for base_url in base_urls:
+            for attempt in range(retries):
+                try:
+                    res = await client.get(f"{base_url}/messages/{message_id}", headers=headers)
+                    if res.status_code == 200:
+                        return res.json()
+                    elif res.status_code == 401:
+                        raise Exception("UNAUTHORIZED")
+                except Exception as e:
+                    if str(e) == "UNAUTHORIZED":
+                        raise
+                    logger.warning(f"Get message detail [{base_url}] attempt {attempt+1} failed: {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.5)
         return {}
 
     async def delete_account(self, token: str, account_id: str) -> bool:
-        """Delete an account permanently on Mail.tm."""
+        """Delete an account permanently."""
         client = self._get_client()
         headers = {"Authorization": f"Bearer {token}"}
-        try:
-            res = await client.delete(f"{self.base_url}/accounts/{account_id}", headers=headers)
-            return res.status_code in (200, 204)
-        except Exception as e:
-            logger.error(f"Delete account error: {e}")
-            return False
+        base_urls = self.get_base_urls()
+        for base_url in base_urls:
+            try:
+                res = await client.delete(f"{base_url}/accounts/{account_id}", headers=headers)
+                if res.status_code in (200, 204):
+                    return True
+            except Exception as e:
+                logger.error(f"Delete account [{base_url}] error: {e}")
+        return False
 
     async def delete_message(self, token: str, message_id: str) -> bool:
         """Delete a single message permanently."""
         client = self._get_client()
         headers = {"Authorization": f"Bearer {token}"}
-        try:
-            res = await client.delete(f"{self.base_url}/messages/{message_id}", headers=headers)
-            return res.status_code in (200, 204)
-        except Exception as e:
-            logger.error(f"Delete message error: {e}")
-            return False
+        base_urls = self.get_base_urls()
+        for base_url in base_urls:
+            try:
+                res = await client.delete(f"{base_url}/messages/{message_id}", headers=headers)
+                if res.status_code in (200, 204):
+                    return True
+            except Exception as e:
+                logger.error(f"Delete message [{base_url}] error: {e}")
+        return False
 
 mail_api = MailTmAPI()
 

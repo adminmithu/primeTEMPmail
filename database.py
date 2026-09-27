@@ -60,6 +60,12 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
         
         try:
             await db.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'bn'")
@@ -1130,4 +1136,41 @@ async def get_user_payment_claims(telegram_id: int):
         async with db.execute("SELECT id, telegram_id, email, sender_number, trx_id, amount, status, created_at FROM payment_claims WHERE telegram_id = ? ORDER BY id DESC LIMIT 5", (telegram_id,)) as cursor:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+async def get_setting(key: str, default: str = "") -> str:
+    if USE_SUPABASE:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/settings?key=eq.{key}&select=value",
+                    headers=get_supabase_headers()
+                )
+                if res.status_code == 200 and res.json():
+                    return res.json()[0].get("value", default)
+        except Exception:
+            pass
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] else default
+
+async def set_setting(key: str, value: str):
+    if USE_SUPABASE:
+        try:
+            payload = {"key": key, "value": value}
+            headers = get_supabase_headers()
+            headers["Prefer"] = "resolution=merge-duplicates"
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.post(f"{SUPABASE_URL}/rest/v1/settings", json=payload, headers=headers)
+        except Exception:
+            pass
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """, (key, value))
+        await db.commit()
 
