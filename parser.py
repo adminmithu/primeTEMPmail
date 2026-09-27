@@ -16,33 +16,44 @@ def clean_html_body(html_content: str) -> str:
     return "\n".join(non_empty_lines)
 
 def extract_otp_codes(text: str) -> list:
-    """Extract 4-8 character OTP verification codes containing digits from text."""
+    """Extract 4-8 character OTP verification codes (including FB-123456, G-123456, 123-456) from text."""
     if not text:
         return []
     
-    # Priority pattern for labeled codes e.g. "code is 123456" or "OTP: 98765"
+    found_codes = []
+
+    # 1. Meta / Google / Microsoft / Instagram style prefixed codes e.g. "FB-123456", "G-987654"
+    prefix_matches = re.findall(r"\b(?:FB|G|IG|MS|VERIFY)[-:\s]?([0-9]{5,8})\b", text, re.IGNORECASE)
+    for m in prefix_matches:
+        if m not in found_codes:
+            found_codes.append(m)
+
+    # 2. Hyphenated or spaced codes e.g. "123-456" -> "123456"
+    hyphen_matches = re.findall(r"\b([0-9]{3})[- ]([0-9]{3,4})\b", text)
+    for m1, m2 in hyphen_matches:
+        combined = f"{m1}{m2}"
+        if combined not in found_codes:
+            found_codes.append(combined)
+
+    # 3. Labeled patterns e.g. "code is 123456" or "security code: 987654"
     labeled_patterns = [
-        r"(?:code|otp|pin|verification|passcode)\s*(?:is|:|=|-)?\s*\b([0-9A-Za-z]*[0-9]+[0-9A-Za-z]*)\b",
+        r"(?:code|otp|pin|verification|passcode|confirm|security)\s*(?:is|:|=|-)?\s*\b([0-9A-Za-z]{4,8})\b",
         r"\b([0-9]{4,8})\b"
     ]
-    
-    found_codes = []
     
     for pattern in labeled_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for m in matches:
             if isinstance(m, tuple):
                 m = m[0]
-            m = str(m).strip()
-            # Must be 4 to 8 chars long and contain digits
-            if 4 <= len(m) <= 8 and any(c.isdigit() for c in m):
-                # Ignore pure year digits like 2026, 2025
-                if len(m) == 4 and m.startswith(("19", "20")):
+            clean_m = re.sub(r'[^0-9A-Za-z]', '', str(m)).strip()
+            if 4 <= len(clean_m) <= 8 and any(c.isdigit() for c in clean_m):
+                if len(clean_m) == 4 and clean_m.startswith(("19", "20")):
                     continue
-                if m not in found_codes:
-                    found_codes.append(m)
+                if clean_m not in found_codes:
+                    found_codes.append(clean_m)
                 
-    return found_codes[:3] # return top 3 potential codes
+    return found_codes[:3]
 
 
 def extract_urls(text: str) -> list:
