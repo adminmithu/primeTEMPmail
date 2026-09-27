@@ -35,8 +35,22 @@ class MailTmAPI:
                 res = await client.get(f"{self.base_url}/domains")
                 if res.status_code == 200:
                     data = res.json()
-                    members = data.get("hydra:member", [])
-                    active_domains = [d["domain"] for d in members if d.get("isActive", True)]
+                    if isinstance(data, list):
+                        members = data
+                    elif isinstance(data, dict):
+                        members = data.get("hydra:member", []) or data.get("member", []) or data.get("domains", [])
+                    else:
+                        members = []
+
+                    active_domains = []
+                    for d in members:
+                        if isinstance(d, dict) and d.get("isActive", True):
+                            domain_str = d.get("domain")
+                            if domain_str:
+                                active_domains.append(domain_str)
+                        elif isinstance(d, str):
+                            active_domains.append(d)
+
                     if active_domains:
                         return active_domains
                 else:
@@ -97,7 +111,10 @@ class MailTmAPI:
                 res = await client.get(f"{self.base_url}/messages?page={page}", headers=headers)
                 if res.status_code == 200:
                     data = res.json()
-                    return data.get("hydra:member", [])
+                    if isinstance(data, list):
+                        return data
+                    elif isinstance(data, dict):
+                        return data.get("hydra:member", []) or data.get("member", []) or []
                 elif res.status_code == 401:
                     raise Exception("UNAUTHORIZED")
             except Exception as e:
