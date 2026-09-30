@@ -1581,15 +1581,16 @@ async def process_admin_text_input(update: Update, context: ContextTypes.DEFAULT
         return ConversationHandler.END
 
     # Get HTML string preserving Telegram Premium custom emojis and tags!
-    new_text = update.message.text_html
-    if not new_text:
-        new_text = update.message.text or ""
+    raw_html = update.message.text_html or update.message.text or ""
+    new_text = html.unescape(raw_html)
 
     if editing_key.startswith("btn_"):
-        # Strip container formatting tags (blockquote, b, i, code) but PRESERVE Telegram Premium <tg-emoji> tags!
-        new_text = re.sub(r'</?(?!(?:tg-emoji\b))[^>]+>', '', new_text).strip()
+        # Telegram Reply Keyboard Buttons only accept plain text/unicode emojis. Strip HTML tags so buttons render cleanly without raw tags.
+        new_text = re.sub(r'<[^>]+>', '', new_text).strip()
         if not new_text and update.message and update.message.text:
             new_text = update.message.text.strip()
+
+
 
 
     # Save setting in DB

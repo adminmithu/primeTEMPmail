@@ -493,12 +493,14 @@ class SafeDict(dict):
         return "{" + key + "}"
 
 import re
+import html
 
 def clean_button_text(text: str) -> str:
     if not text:
         return ""
-    # Strip formatting tags (blockquote, b, i, code) but PRESERVE Telegram Premium <tg-emoji> tags!
-    return re.sub(r'</?(?!(?:tg-emoji\b))[^>]+>', '', text).strip()
+    # Telegram Reply Keyboards only accept plain text/unicode emojis. Strip all HTML tags to prevent raw code from showing on buttons.
+    return re.sub(r'<[^>]+>', '', html.unescape(text)).strip()
+
 
 def get_string(lang: str, key: str, **kwargs) -> str:
     # Check custom override first
@@ -513,6 +515,8 @@ def get_string(lang: str, key: str, **kwargs) -> str:
     
     if key and key.startswith("btn_"):
         template = clean_button_text(template)
+    else:
+        template = html.unescape(template)
 
     if kwargs:
         try:
@@ -520,6 +524,7 @@ def get_string(lang: str, key: str, **kwargs) -> str:
         except Exception:
             return template
     return template
+
 
 
 
