@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdsPower Seller BD App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            padding: 16px;
+            text-align: center;
+        }
+        .header {
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            color: #38bdf8;
+            font-size: 24px;
+            margin-bottom: 6px;
+        }
+        .header p {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+            text-decoration: none;
+        }
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Success Green Buttons */
+        .btn-success {
+            background-color: #10b981 !important;
+            color: #ffffff !important;
+        }
+        .btn-success:hover {
+            background-color: #059669 !important;
+        }
+
+        /* Primary Blue Buttons */
+        .btn-primary {
+            background-color: #3b82f6 !important;
+            color: #ffffff !important;
+        }
+        .btn-primary:hover {
+            background-color: #2563eb !important;
+        }
+
+        /* Danger Red Buttons */
+        .btn-danger {
+            background-color: #ef4444 !important;
+            color: #ffffff !important;
+        }
+        .btn-danger:hover {
+            background-color: #dc2626 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 AdsPower Seller BD</h1>
+        <p>অফিসিয়াল অর্ডার ও ম্যানেজমেন্ট প্যানেল</p>
+    </div>
+
+    <div class="button-group">
+        <!-- Success Green Buttons -->
+        <button class="btn btn-success" onclick="Telegram.WebApp.sendData('action_buy_now')">🟩 Buy AdsPower Accounts (Success Green)</button>
+        <button class="btn btn-success" onclick="Telegram.WebApp.sendData('action_verify')">🟩 Verify Group Join</button>
+        <button class="btn btn-success" onclick="Telegram.WebApp.sendData('action_add_balance')">🟩 Add Balance</button>
+
+        <!-- Primary Blue Buttons -->
+        <button class="btn btn-primary" onclick="Telegram.WebApp.sendData('action_profile')">🟦 My Profile (Primary Blue)</button>
+        <button class="btn btn-primary" onclick="Telegram.WebApp.sendData('action_orders')">🟦 My Order History</button>
+        <button class="btn btn-primary" onclick="Telegram.WebApp.sendData('action_support')">🟦 Contact Support</button>
+
+        <!-- Danger Red Buttons -->
+        <button class="btn btn-danger" onclick="Telegram.WebApp.sendData('action_cancel')">🟥 Cancel Pending Order (Danger Red)</button>
+        <button class="btn btn-danger" onclick="Telegram.WebApp.sendData('action_clear')">🟥 Clear History</button>
+        <button class="btn btn-danger" onclick="Telegram.WebApp.close()">🟥 Close WebApp Panel</button>
+    </div>
+
+    <script>
+        Telegram.WebApp.ready();
+        Telegram.WebApp.expand();
+    </script>
+</body>
+</html>
