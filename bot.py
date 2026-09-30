@@ -702,34 +702,19 @@ async def my_profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         history_text = "  <i>(কোনো সাম্প্রতিক পেমেন্ট দাবি নেই / No recent claims)</i>\n"
 
-    if lang == "bn":
-        profile_msg = (
-            f"👤 <b>আপনার ইউজার প্রোফাইল ও পেমেন্ট হিস্ট্রি</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"<blockquote>👤 <b>User:</b> {uname} (ID: <code>{user_id}</code>)\n"
-            f"🏅 <b>Status:</b> <b>{user_status}</b>\n"
-            f"📅 <b>যোগদানের তারিখ:</b> <code>{joined_date}</code></blockquote>\n\n"
-            f"📊 <b>ইমেইল অ্যাকাউন্ট পরিসংখ্যান:</b>\n"
-            f"<blockquote>📧 <b>মোট ইমেইল:</b> <code>{total_mails}</code> টি\n"
-            f"🟢 <b>সচল (Active):</b> <code>{active_mails}</code> টি\n"
-            f"🔒 <b>মেয়াদ উত্তীর্ণ (Expired):</b> <code>{expired_mails}</code> টি</blockquote>\n\n"
-            f"💳 <b>সাম্প্রতিক পেমেন্ট দাবি (TrxID History):</b>\n"
-            f"<blockquote>{history_text}</blockquote>"
-        )
-    else:
-        profile_msg = (
-            f"👤 <b>Your Profile & Payment History</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"<blockquote>👤 <b>User:</b> {uname} (ID: <code>{user_id}</code>)\n"
-            f"🏅 <b>Status:</b> <b>{user_status}</b>\n"
-            f"📅 <b>Joined Date:</b> <code>{joined_date}</code></blockquote>\n\n"
-            f"📊 <b>Email Account Statistics:</b>\n"
-            f"<blockquote>📧 <b>Total Emails:</b> <code>{total_mails}</code>\n"
-            f"🟢 <b>Active:</b> <code>{active_mails}</code>\n"
-            f"🔒 <b>Expired:</b> <code>{expired_mails}</code></blockquote>\n\n"
-            f"💳 <b>Recent Payment Claims (TrxID History):</b>\n"
-            f"<blockquote>{history_text}</blockquote>"
-        )
+    profile_msg = get_string(
+        lang,
+        "profile_text",
+        uname=uname,
+        user_id=user_id,
+        user_status=user_status,
+        joined_date=joined_date,
+        total_mails=total_mails,
+        active_mails=active_mails,
+        expired_mails=expired_mails,
+        history_text=history_text
+    )
+
 
     kb = [
         [InlineKeyboardButton("🗂 View Saved Mails", callback_data="list_saved", api_kwargs={"style": "success"})],
@@ -1401,29 +1386,43 @@ TEXT_CATALOG = {
         }
     },
     "cat_messages": {
-        "title": "📩 General Bot Messages",
+        "title": "📩 General Bot Messages & Prompts",
         "items": {
             "welcome": "👋 Welcome Message",
             "help_text": "❓ Help & Guide Text",
+            "prompt_custom_name": "✏️ Custom Name Prompt",
             "prompt_2fa": "🔑 2FA Prompt Text",
-            "prompt_custom_name": "✏️ Custom Name Prompt Text",
-            "prompt_login": "🔐 Login Restore Prompt Text",
+            "prompt_login": "🔐 Login Restore Prompt",
+            "mail_created_success": "🎉 Email Created Success Notice",
+            "saved_mails_title": "🗂 Saved Mails Header Text",
             "no_saved_mails": "🗂 No Saved Mails Notice",
+            "inbox_empty": "📥 Empty Inbox Notice",
+            "new_email_alert": "🔔 New Email Received Alert",
         }
     },
     "cat_payment": {
-        "title": "💳 Payment & Extension Texts",
+        "title": "💳 Payment, Expiry & Extensions",
         "items": {
             "payment_notice_text_single": "⚠️ Single Mail Payment Notice",
             "payment_notice_text_multi": "🎁 Combo Offer Payment Notice",
             "prompt_sender_number": "📱 Payment Sender Prompt",
             "prompt_trx_id": "📝 TrxID Prompt",
             "payment_submitted_success": "🎉 Payment Success Notice",
+            "user_payment_approved_notice": "🎉 Payment Approved Notice",
+            "user_payment_rejected_notice": "❌ Payment Rejected Notice",
+            "email_expired_locked_notice": "⚠️ Email Expired Locked Notice",
+            "free_trial_extended_success": "🎉 Trial Extended Notice",
         }
     },
     "cat_admin_buttons": {
-        "title": "🛠️ Admin Panel Keyboard Buttons",
+        "title": "🛠️ Admin Panel & Controls",
         "items": {
+            "admin_panel_title": "👑 Admin Panel Header Text",
+            "admin_stats_text": "📊 Live Stats Dashboard Text",
+            "prompt_ban": "🚫 Ban User Prompt",
+            "prompt_unban": "✅ Unban User Prompt",
+            "prompt_vip": "👑 VIP Toggle Prompt",
+            "ban_list_title": "📋 Banned List Header",
             "btn_admin_stats": "📊 Live Stats Button Label",
             "btn_admin_export": "📄 Export Users Button Label",
             "btn_admin_provider": "⚙️ Mail Provider Button Label",
@@ -1438,6 +1437,7 @@ TEXT_CATALOG = {
         }
     }
 }
+
 
 WAITING_FOR_TEXT_INPUT = 25
 

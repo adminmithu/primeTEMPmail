@@ -236,8 +236,22 @@ STRINGS = {
             "<i>(উদাহরণ: <code>mithubd@uberip.com : Pass#9821</code>)</i></blockquote>\n\n"
             "🚫 বাতিল করতে /cancel টাইপ করুন।"
         ),
+        "profile_text": (
+            "👤 <b>আপনার ইউজার প্রোফাইল ও পেমেন্ট হিস্ট্রি</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>👤 <b>User:</b> {uname} (ID: <code>{user_id}</code>)\n"
+            "🏅 <b>Status:</b> <b>{user_status}</b>\n"
+            "📅 <b>যোগদানের তারিখ:</b> <code>{joined_date}</code></blockquote>\n\n"
+            "📊 <b>ইমেইল অ্যাকাউন্ট পরিসংখ্যান:</b>\n"
+            "<blockquote>📧 <b>মোট ইমেইল:</b> <code>{total_mails}</code> টি\n"
+            "🟢 <b>সচল (Active):</b> <code>{active_mails}</code> টি\n"
+            "🔒 <b>মেয়াদ উত্তীর্ণ (Expired):</b> <code>{expired_mails}</code> টি</blockquote>\n\n"
+            "💳 <b>সাম্প্রতিক পেমেন্ট দাবি (TrxID History):</b>\n"
+            "<blockquote>{history_text}</blockquote>"
+        ),
         "lang_switched": "🌐 ভাষা পরিবর্তিত হয়ে <b>বাংলা</b> হয়েছে।",
     },
+
     "en": {
         "welcome": (
             "👋 <b>Hello {name}!</b>\n\n"
@@ -468,9 +482,23 @@ STRINGS = {
             "📝 <b>Format:</b> <code>email : password</code></blockquote>\n\n"
             "Type /cancel to abort."
         ),
+        "profile_text": (
+            "👤 <b>Your Profile & Payment History</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<blockquote>👤 <b>User:</b> {uname} (ID: <code>{user_id}</code>)\n"
+            "🏅 <b>Status:</b> <b>{user_status}</b>\n"
+            "📅 <b>Joined Date:</b> <code>{joined_date}</code></blockquote>\n\n"
+            "📊 <b>Email Account Statistics:</b>\n"
+            "<blockquote>📧 <b>Total Emails:</b> <code>{total_mails}</code>\n"
+            "🟢 <b>Active:</b> <code>{active_mails}</code>\n"
+            "🔒 <b>Expired:</b> <code>{expired_mails}</code></blockquote>\n\n"
+            "💳 <b>Recent Payment Claims (TrxID History):</b>\n"
+            "<blockquote>{history_text}</blockquote>"
+        ),
         "lang_switched": "🌐 Language switched to <b>English</b>.",
     }
 }
+
 
 CUSTOM_TEXTS = {}
 
