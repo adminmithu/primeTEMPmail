@@ -38,6 +38,17 @@ STRINGS = {
         "btn_profile": "👤 My Profile",
         "btn_help": "❓ Help",
         "btn_admin": "👑 Admin Control",
+        "btn_admin_stats": "📊 Live Stats",
+        "btn_admin_export": "📄 Export Users List",
+        "btn_admin_provider": "⚙️ Mail Provider",
+        "btn_admin_maint": "🚧 Maintenance Mode",
+        "btn_admin_ban": "🚫 Ban User",
+        "btn_admin_banned_list": "📋 Banned Users",
+        "btn_admin_pending_pay": "💳 Pending Payments",
+        "btn_admin_broadcast": "📢 Broadcast",
+        "btn_admin_vip": "👑 Toggle VIP",
+        "btn_admin_backup": "💾 DB Backup",
+        "btn_admin_edit_texts": "📝 Edit Bot Texts",
         "prompt_2fa": (
             "🔑 <b>2FA Authenticator (TOTP Code Generator)</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -260,10 +271,21 @@ STRINGS = {
         "btn_login": "🔐 Login Account",
         "btn_export_txt": "📁 Export TXT",
         "btn_2fa": "🔑 2FA Authenticator",
-        "btn_lang": "🌐 Language / ভাষা",
+        "btn_lang": "🌐 Language / language",
         "btn_profile": "👤 My Profile",
         "btn_help": "❓ Help",
         "btn_admin": "👑 Admin Control",
+        "btn_admin_stats": "📊 Live Stats",
+        "btn_admin_export": "📄 Export Users List",
+        "btn_admin_provider": "⚙️ Mail Provider",
+        "btn_admin_maint": "🚧 Maintenance Mode",
+        "btn_admin_ban": "🚫 Ban User",
+        "btn_admin_banned_list": "📋 Banned Users",
+        "btn_admin_pending_pay": "💳 Pending Payments",
+        "btn_admin_broadcast": "📢 Broadcast",
+        "btn_admin_vip": "👑 Toggle VIP",
+        "btn_admin_backup": "💾 DB Backup",
+        "btn_admin_edit_texts": "📝 Edit Bot Texts",
         "prompt_2fa": (
             "🔑 <b>2FA Authenticator (TOTP Code Generator)</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -450,7 +472,41 @@ STRINGS = {
     }
 }
 
+CUSTOM_TEXTS = {}
+
+def set_custom_text(key: str, text: str):
+    """Set custom override for a locale key."""
+    if key and text is not None:
+        CUSTOM_TEXTS[key] = text
+
+def remove_custom_text(key: str):
+    """Remove custom override for a locale key."""
+    CUSTOM_TEXTS.pop(key, None)
+
+def reset_all_custom_texts():
+    """Clear all custom overrides."""
+    CUSTOM_TEXTS.clear()
+
+class SafeDict(dict):
+    """Fallback dictionary for string format missing keys."""
+    def __missing__(self, key):
+        return "{" + key + "}"
+
 def get_string(lang: str, key: str, **kwargs) -> str:
-    lang_dict = STRINGS.get(lang, STRINGS["bn"])
-    template = lang_dict.get(key, STRINGS["bn"].get(key, ""))
-    return template.format(**kwargs) if kwargs else template
+    # Check custom override first
+    lang_key = f"{lang}:{key}"
+    if lang_key in CUSTOM_TEXTS:
+        template = CUSTOM_TEXTS[lang_key]
+    elif key in CUSTOM_TEXTS:
+        template = CUSTOM_TEXTS[key]
+    else:
+        lang_dict = STRINGS.get(lang, STRINGS["bn"])
+        template = lang_dict.get(key, STRINGS["bn"].get(key, ""))
+    
+    if kwargs:
+        try:
+            return template.format_map(SafeDict(**kwargs))
+        except Exception:
+            return template
+    return template
+

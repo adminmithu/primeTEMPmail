@@ -1174,3 +1174,68 @@ async def set_setting(key: str, value: str):
         """, (key, value))
         await db.commit()
 
+async def delete_setting(key: str):
+    if USE_SUPABASE:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/settings?key=eq.{key}",
+                    headers=get_supabase_headers()
+                )
+        except Exception:
+            pass
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM settings WHERE key = ?", (key,))
+        await db.commit()
+
+async def get_all_custom_texts() -> dict:
+    results = {}
+    if USE_SUPABASE:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/settings?key=like.text_%&select=key,value",
+                    headers=get_supabase_headers()
+                )
+                if res.status_code == 200 and res.json():
+                    for item in res.json():
+                        k = item.get("key", "")
+                        v = item.get("value", "")
+                        if k.startswith("text_"):
+                            results[k[5:]] = v
+                    return results
+        except Exception:
+            pass
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT key, value FROM settings WHERE key LIKE 'text_%'") as cursor:
+            rows = await cursor.fetchall()
+            for r in rows:
+                if r[0].startswith("text_"):
+                    results[r[0][5:]] = r[1]
+    return results
+
+async def reset_all_custom_settings():
+    if USE_SUPABASE:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/settings?key=like.text_%",
+                    headers=get_supabase_headers()
+                )
+        except Exception:
+            pass
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM settings WHERE key LIKE 'text_%'")
+        await db.commit()
+
+async def sync_locales_custom_texts():
+    from locales import reset_all_custom_texts, set_custom_text
+    reset_all_custom_texts()
+    custom_dict = await get_all_custom_texts()
+    for k, v in custom_dict.items():
+        set_custom_text(k, v)
+
+

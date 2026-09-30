@@ -123,15 +123,18 @@ async def show_maintenance_notice(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text(maint_text, parse_mode="HTML")
 
 def get_admin_reply_keyboard(lang: str = "bn"):
+    b = lambda key: get_string(lang, key)
     rows = [
-        [KeyboardButton("📊 Live Stats", api_kwargs={"style": "primary"}), KeyboardButton("📄 Export Users List", api_kwargs={"style": "primary"})],
-        [KeyboardButton("⚙️ Mail Provider", api_kwargs={"style": "success"}), KeyboardButton("🚧 Maintenance Mode", api_kwargs={"style": "danger"})],
-        [KeyboardButton("🚫 Ban User", api_kwargs={"style": "danger"}), KeyboardButton("📋 Banned Users", api_kwargs={"style": "danger"})],
-        [KeyboardButton("💳 Pending Payments", api_kwargs={"style": "success"}), KeyboardButton("📢 Broadcast", api_kwargs={"style": "primary"})],
-        [KeyboardButton("👑 Toggle VIP", api_kwargs={"style": "success"}), KeyboardButton("💾 DB Backup", api_kwargs={"style": "primary"})],
+        [KeyboardButton(b("btn_admin_stats"), api_kwargs={"style": "primary"}), KeyboardButton(b("btn_admin_export"), api_kwargs={"style": "primary"})],
+        [KeyboardButton(b("btn_admin_provider"), api_kwargs={"style": "success"}), KeyboardButton(b("btn_admin_maint"), api_kwargs={"style": "danger"})],
+        [KeyboardButton(b("btn_admin_ban"), api_kwargs={"style": "danger"}), KeyboardButton(b("btn_admin_banned_list"), api_kwargs={"style": "danger"})],
+        [KeyboardButton(b("btn_admin_pending_pay"), api_kwargs={"style": "success"}), KeyboardButton(b("btn_admin_broadcast"), api_kwargs={"style": "primary"})],
+        [KeyboardButton(b("btn_admin_vip"), api_kwargs={"style": "success"}), KeyboardButton(b("btn_admin_backup"), api_kwargs={"style": "primary"})],
+        [KeyboardButton(b("btn_admin_edit_texts"), api_kwargs={"style": "primary"})],
         [KeyboardButton("🔙 Back to User Menu", api_kwargs={"style": "primary"})]
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1380,6 +1383,236 @@ async def reject_payment_callback(update: Update, context: ContextTypes.DEFAULT_
     except Exception as e:
         logger.error(f"Failed to send rejection notice to user: {e}")
 
+TEXT_CATALOG = {
+    "cat_user_buttons": {
+        "title": "📱 Main User Menu Buttons",
+        "items": {
+            "btn_create_custom": "✏️ Custom Mail Button Label",
+            "btn_create_random": "📧 Random Mail Button Label",
+            "btn_2fa": "🔑 2FA Authenticator Button Label",
+            "btn_saved_mails": "🗂 Saved Mails Button Label",
+            "btn_current_inbox": "📥 Current Inbox Button Label",
+            "btn_export_txt": "📁 Export TXT Button Label",
+            "btn_login": "🔐 Login Account Button Label",
+            "btn_lang": "🌐 Language Button Label",
+            "btn_profile": "👤 My Profile Button Label",
+            "btn_help": "❓ Help Button Label",
+            "btn_admin": "👑 Admin Control Button Label",
+        }
+    },
+    "cat_messages": {
+        "title": "📩 General Bot Messages",
+        "items": {
+            "welcome": "👋 Welcome Message",
+            "help_text": "❓ Help & Guide Text",
+            "prompt_2fa": "🔑 2FA Prompt Text",
+            "prompt_custom_name": "✏️ Custom Name Prompt Text",
+            "prompt_login": "🔐 Login Restore Prompt Text",
+            "no_saved_mails": "🗂 No Saved Mails Notice",
+        }
+    },
+    "cat_payment": {
+        "title": "💳 Payment & Extension Texts",
+        "items": {
+            "payment_notice_text_single": "⚠️ Single Mail Payment Notice",
+            "payment_notice_text_multi": "🎁 Combo Offer Payment Notice",
+            "prompt_sender_number": "📱 Payment Sender Prompt",
+            "prompt_trx_id": "📝 TrxID Prompt",
+            "payment_submitted_success": "🎉 Payment Success Notice",
+        }
+    },
+    "cat_admin_buttons": {
+        "title": "🛠️ Admin Panel Keyboard Buttons",
+        "items": {
+            "btn_admin_stats": "📊 Live Stats Button Label",
+            "btn_admin_export": "📄 Export Users Button Label",
+            "btn_admin_provider": "⚙️ Mail Provider Button Label",
+            "btn_admin_maint": "🚧 Maintenance Mode Button Label",
+            "btn_admin_ban": "🚫 Ban User Button Label",
+            "btn_admin_banned_list": "📋 Banned Users Button Label",
+            "btn_admin_pending_pay": "💳 Pending Payments Button Label",
+            "btn_admin_broadcast": "📢 Broadcast Button Label",
+            "btn_admin_vip": "👑 Toggle VIP Button Label",
+            "btn_admin_backup": "💾 DB Backup Button Label",
+            "btn_admin_edit_texts": "📝 Edit Bot Texts Button Label",
+        }
+    }
+}
+
+WAITING_FOR_TEXT_INPUT = 25
+
+async def admin_edit_texts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+
+    text = (
+        "📝 <b>Bot Dynamic Text & Button Editor</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "<blockquote>যেকোনো বাটন বা মেসেজ এডিট করতে নিচের ক্যাটাগরিগুলো থেকে বেছে নিন:</blockquote>"
+    )
+    keyboard = []
+    for cat_id, cat_info in TEXT_CATALOG.items():
+        keyboard.append([InlineKeyboardButton(cat_info["title"], callback_data=f"edt_cat:{cat_id}")])
+
+    keyboard.append([InlineKeyboardButton("🔄 Reset ALL Texts to Default", callback_data="edt_reset_all_prompt", api_kwargs={"style": "danger"})])
+    keyboard.append([InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel", api_kwargs={"style": "primary"})])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+async def admin_edit_texts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        await query.answer("Permission Denied", show_alert=True)
+        return
+
+    data = query.data
+    if data == "admin_edit_texts_menu":
+        return await admin_edit_texts_command(update, context)
+
+    if data.startswith("edt_cat:"):
+        cat_id = data.split("edt_cat:")[1]
+        cat_info = TEXT_CATALOG.get(cat_id)
+        if not cat_info:
+            await query.answer("Category not found", show_alert=True)
+            return
+
+        text = (
+            f"📁 <b>{cat_info['title']}</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<i>সম্পাদন করতে চাইলে নিচের যেকোনো সাব-বাটনে চাপুন:</i>"
+        )
+        keyboard = []
+        for key, item_label in cat_info["items"].items():
+            keyboard.append([InlineKeyboardButton(item_label, callback_data=f"edt_item:{key}:{cat_id}")])
+
+        keyboard.append([InlineKeyboardButton("🔙 Back to Categories", callback_data="admin_edit_texts_menu", api_kwargs={"style": "primary"})])
+        await query.answer()
+        await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("edt_item:"):
+        parts = data.split(":")
+        key = parts[1]
+        cat_id = parts[2] if len(parts) > 2 else "cat_user_buttons"
+        
+        return await start_admin_edit_item_prompt(update, context, key, cat_id)
+
+    elif data.startswith("edt_reset_item:"):
+        parts = data.split(":")
+        key = parts[1]
+        cat_id = parts[2] if len(parts) > 2 else "cat_user_buttons"
+        await db.delete_setting(f"text_{key}")
+        await db.sync_locales_custom_texts()
+        context.user_data.pop("editing_text_key", None)
+        await query.answer("✅ Item reset to default!", show_alert=True)
+        query.data = f"edt_cat:{cat_id}"
+        await admin_edit_texts_callback(update, context)
+
+    elif data == "edt_reset_all_prompt":
+        text = (
+            "⚠️ <b>সতর্কতা: আপনি কি সমস্ত কাস্টম টেক্সট ডিফল্টে রিসেট করতে চান?</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "আপনার পূর্বে সেভ করা সকল কাস্টম টেক্সট মুছে গিয়ে বটের মূল কোডের টেক্সটে ফিরে আসবে।"
+        )
+        keyboard = [
+            [InlineKeyboardButton("YES, Reset ALL to Default", callback_data="edt_reset_all_confirm", api_kwargs={"style": "danger"})],
+            [InlineKeyboardButton("❌ Cancel", callback_data="admin_edit_texts_menu", api_kwargs={"style": "primary"})]
+        ]
+        await query.answer()
+        await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "edt_reset_all_confirm":
+        await db.reset_all_custom_settings()
+        await db.sync_locales_custom_texts()
+        context.user_data.pop("editing_text_key", None)
+        await query.answer("🎉 ALL texts reset to default!", show_alert=True)
+        await admin_edit_texts_command(update, context)
+
+async def start_admin_edit_item_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str, cat_id: str):
+    query = update.callback_query
+    item_title = key
+    for c in TEXT_CATALOG.values():
+        if key in c["items"]:
+            item_title = c["items"][key]
+            break
+
+    curr_text = get_string("bn", key)
+    context.user_data["editing_text_key"] = key
+    context.user_data["editing_text_cat"] = cat_id
+
+    text = (
+        f"✏️ <b>Text Editor: {item_title}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📌 <b>বর্তমান সেভ হওয়া টেক্সট:</b>\n"
+        f"<blockquote>{safe_html(curr_text)}</blockquote>\n\n"
+        "👇 <b>নতুন টেক্সট লিখে পাঠান:</b>\n"
+        "<i>(আপনি Telegram Premium কাস্টম ইমোজি, <b>বোল্ড</b>, <i>ইটালিক</i>, <code>কোড</code> বা <blockquote>কোটেশন</blockquote> ব্যবহার করতে পারবেন)</i>\n\n"
+        "🚫 বাতিল করতে /cancel টাইপ করুন।"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("🔄 Reset this item to Default", callback_data=f"edt_reset_item:{key}:{cat_id}", api_kwargs={"style": "danger"})],
+        [InlineKeyboardButton("🔙 Back to Category Sub-Buttons", callback_data=f"edt_cat:{cat_id}", api_kwargs={"style": "primary"})]
+    ]
+
+    if query:
+        await query.answer()
+        await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    return WAITING_FOR_TEXT_INPUT
+
+async def process_admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return ConversationHandler.END
+
+    editing_key = context.user_data.get("editing_text_key")
+    cat_id = context.user_data.get("editing_text_cat", "cat_user_buttons")
+
+    if not editing_key:
+        return ConversationHandler.END
+
+    # Get HTML string preserving Telegram Premium custom emojis and tags!
+    new_text = update.message.text_html
+    if not new_text:
+        new_text = update.message.text or ""
+
+    # Save setting in DB
+    await db.set_setting(f"text_{editing_key}", new_text)
+    await db.sync_locales_custom_texts()
+
+    context.user_data.pop("editing_text_key", None)
+
+    item_title = editing_key
+    for c in TEXT_CATALOG.values():
+        if editing_key in c["items"]:
+            item_title = c["items"][editing_key]
+            break
+
+    reply_text = (
+        "🎉 <b>টেক্সট সফলভাবে সেভ ও আপডেট করা হয়েছে!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📌 <b>নমুনাস্বরূপ প্রিভিউ ({item_title}):</b>\n"
+        f"<blockquote>{new_text}</blockquote>\n\n"
+        "<i>এখন থেকে বট এই কাস্টম টেক্সট ও ইমোজিগুলো ইউজারদের দেখাবে।</i>"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("📝 Edit Another Text", callback_data="admin_edit_texts_menu", api_kwargs={"style": "primary"})],
+        [InlineKeyboardButton("🔙 Back to Admin Panel", callback_data="admin_panel", api_kwargs={"style": "primary"})]
+    ]
+
+    await update.message.reply_text(reply_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+    return ConversationHandler.END
+
 async def auto_inbox_poller_task(app: Application):
     logger.info("Realtime background inbox poller started...")
     while True:
@@ -1393,69 +1626,70 @@ async def auto_inbox_poller_task(app: Application):
 
             active_accs = await db.get_all_active_accounts()
             for acc in active_accs:
-                exp_status, _ = db.check_account_expiry_status(acc)
-                if exp_status != "active":
-                    continue
-
-                u_id = acc["telegram_id"]
-                email = acc["email"]
-                token = acc["token"]
-                last_msg_id = acc.get("last_msg_id")
-
-                if not token and acc.get("password"):
-                    try:
-                        token = await mail_api.get_token(email, acc["password"])
-                        await db.update_account_token(u_id, email, token)
-                        acc["token"] = token
-                    except Exception:
+                try:
+                    exp_status, _ = db.check_account_expiry_status(acc)
+                    if exp_status != "active":
                         continue
 
-                if not token:
-                    continue
+                    u_id = acc["telegram_id"]
+                    email = acc["email"]
+                    token = acc["token"]
+                    last_msg_id = acc.get("last_msg_id")
 
-                try:
-                    msgs = await mail_api.get_messages(token, email=email)
-                except Exception as ex:
-                    if str(ex) == "UNAUTHORIZED" and acc.get("password"):
+                    if not token and acc.get("password"):
                         try:
                             token = await mail_api.get_token(email, acc["password"])
                             await db.update_account_token(u_id, email, token)
-                            msgs = await mail_api.get_messages(token, email=email)
+                            acc["token"] = token
                         except Exception:
                             continue
-                    else:
+
+                    if not token:
                         continue
 
-                if msgs:
-                    latest_msg = msgs[0]
-                    latest_id = latest_msg.get("id")
+                    try:
+                        msgs = await mail_api.get_messages(token, email=email)
+                    except Exception as ex:
+                        if str(ex) == "UNAUTHORIZED" and acc.get("password"):
+                            try:
+                                token = await mail_api.get_token(email, acc["password"])
+                                await db.update_account_token(u_id, email, token)
+                                msgs = await mail_api.get_messages(token, email=email)
+                            except Exception:
+                                continue
+                        else:
+                            continue
 
-                    if latest_id and latest_id != last_msg_id:
-                        await db.update_last_msg_id(u_id, email, latest_id)
+                    if msgs:
+                        latest_msg = msgs[0]
+                        latest_id = latest_msg.get("id")
 
-                        detail = await mail_api.get_message_detail(token, latest_id, email=email)
-                        subject = detail.get("subject", "No Subject")
-                        sender = detail.get("from", {}).get("address", "Unknown")
-                        body_text = detail.get("text", "") or email_parser.clean_html_body(detail.get("html", [""])[0])
-                        
-                        otps = email_parser.extract_otp_codes(body_text)
+                        if latest_id and latest_id != last_msg_id:
+                            await db.update_last_msg_id(u_id, email, latest_id)
 
-                        lang = await db.get_user_language(u_id)
-                        alert_msg = get_string(lang, "new_email_alert", email=safe_html(email), subject=safe_html(subject), sender=safe_html(sender))
-                        
-                        kb = []
-                        if otps:
-                            alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
-                            kb.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
+                            detail = await mail_api.get_message_detail(token, latest_id, email=email)
+                            subject = detail.get("subject", "No Subject")
+                            sender = detail.get("from", {}).get("address", "Unknown")
+                            body_text = detail.get("text", "") or email_parser.clean_html_body(detail.get("html", [""])[0])
+                            
+                            otps = email_parser.extract_otp_codes(body_text)
 
-                        kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
-                        
-                        await app.bot.send_message(
-                            chat_id=u_id,
-                            text=alert_msg,
-                            parse_mode="HTML",
-                            reply_markup=InlineKeyboardMarkup(kb)
-                        )
+                            lang = await db.get_user_language(u_id)
+                            alert_msg = get_string(lang, "new_email_alert", email=safe_html(email), subject=safe_html(subject), sender=safe_html(sender))
+                            
+                            kb = []
+                            if otps:
+                                alert_msg += get_string(lang, "otp_alert", otp=safe_html(otps[0]))
+                                kb.append([InlineKeyboardButton(f"📋 {otps[0]}", api_kwargs={"copy_text": {"text": otps[0]}, "style": "success"})])
+
+                            kb.append([InlineKeyboardButton("📖 Read Email", callback_data=f"read:{email}:{latest_id}", api_kwargs={"style": "primary"})])
+                            
+                            await app.bot.send_message(
+                                chat_id=u_id,
+                                text=alert_msg,
+                                parse_mode="HTML",
+                                reply_markup=InlineKeyboardMarkup(kb)
+                            )
                 except Exception as ex:
                     logger.debug(f"Polling check error for {email}: {ex}")
 
@@ -1463,6 +1697,7 @@ async def auto_inbox_poller_task(app: Application):
             logger.error(f"Error in background polling loop: {e}")
 
         await asyncio.sleep(POLL_INTERVAL)
+
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1649,6 +1884,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     elif data == "admin_backup":
         await admin_backup_command(update, context)
+    elif data.startswith("edt_cat:") or data == "admin_edit_texts_menu" or data.startswith("edt_reset_"):
+        await admin_edit_texts_callback(update, context)
+    elif data == "admin_edit_texts":
+        await admin_edit_texts_command(update, context)
+
 
 async def cancel_prompt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1676,8 +1916,9 @@ MENU_KEYWORDS = [
     "Export TXT", "Login Account", "Restore Mail", "Language", "Help", "Admin",
     "Live Stats", "Export Users List", "Ban User", "Banned Users",
     "Pending Payments", "Broadcast", "Toggle VIP", "DB Backup", "Back to User Menu",
-    "2FA", "Authenticator", "Profile", "ভাষা"
+    "Edit Bot Texts", "এডিট টেক্সট", "2FA", "Authenticator", "Profile", "ভাষা"
 ]
+
 
 def is_menu_navigation(text: str) -> bool:
     if not text:
@@ -1898,11 +2139,13 @@ async def direct_2fa_secret_handler(update: Update, context: ContextTypes.DEFAUL
 
 async def _post_init_hook(app: Application):
     try:
+        await db.sync_locales_custom_texts()
         prov = await db.get_setting("mail_provider", "auto")
         mail_api.active_provider = prov
-    except Exception:
-        pass
-    asyncio.create_task(auto_inbox_poller_task(app))
+    except Exception as e:
+        logger.error(f"Error in _post_init_hook: {e}")
+    if not os.getenv("VERCEL"):
+        asyncio.create_task(auto_inbox_poller_task(app))
 
 def setup_bot_application(token: str) -> Application:
     from telegram.request import HTTPXRequest
@@ -1910,8 +2153,21 @@ def setup_bot_application(token: str) -> Application:
     app = Application.builder().token(token).request(request).post_init(_post_init_hook).build()
 
     menu_fallback = MessageHandler(
-        filters.Regex(r".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu|2FA|Authenticator|Profile|language|ভাষা).*"),
+        filters.Regex(r".*(Create Custom Mail|Create Random Mail|Saved Mails|Current Inbox|Export TXT|Login Account|Restore Mail|Language|Help|Admin|Live Stats|Export Users List|Ban User|Banned Users|Pending Payments|Broadcast|Toggle VIP|DB Backup|Back to User Menu|Edit Bot Texts|এডিট টেক্সট|2FA|Authenticator|Profile|language|ভাষা).*"),
         cancel_and_route_menu
+    )
+
+    edit_text_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(admin_edit_texts_callback, pattern="^edt_item:")
+        ],
+        states={
+            WAITING_FOR_TEXT_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_admin_text_input)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_flow), CallbackQueryHandler(cancel_prompt_callback, pattern="^cancel_prompt$"), menu_fallback],
+        per_message=False
     )
 
     totp_2fa_conv = ConversationHandler(
@@ -2030,6 +2286,7 @@ def setup_bot_application(token: str) -> Application:
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("admin", admin_panel_command))
+    app.add_handler(CommandHandler("edittexts", admin_edit_texts_command))
     app.add_handler(CommandHandler("new", create_new_mail))
     app.add_handler(CommandHandler("myaccounts", list_saved_mails))
     app.add_handler(CommandHandler("inbox", current_inbox_command))
@@ -2040,6 +2297,7 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("2fa", fast_2fa_command))
 
+    app.add_handler(edit_text_conv)
     app.add_handler(totp_2fa_conv)
     app.add_handler(login_conv)
     app.add_handler(custom_conv)
@@ -2050,6 +2308,7 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(broadcast_conv)
 
     app.add_handler(MessageHandler(filters.Regex(".*(Admin Control|Admin Panel).*"), admin_panel_command))
+    app.add_handler(MessageHandler(filters.Regex(".*(Edit Bot Texts|এডিট টেক্সট).*"), admin_edit_texts_command))
     app.add_handler(MessageHandler(filters.Regex(".*Mail Provider.*"), admin_provider_settings_command))
     app.add_handler(MessageHandler(filters.Regex(".*Maintenance Mode.*"), admin_maintenance_command))
     app.add_handler(MessageHandler(filters.Regex(".*Live Stats.*"), admin_stats_command))
@@ -2072,5 +2331,6 @@ def setup_bot_application(token: str) -> Application:
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     return app
+
 
 
