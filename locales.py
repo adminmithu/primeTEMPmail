@@ -494,6 +494,12 @@ class SafeDict(dict):
 
 import re
 
+def clean_button_text(text: str) -> str:
+    if not text:
+        return ""
+    # Strip formatting tags (blockquote, b, i, code) but PRESERVE Telegram Premium <tg-emoji> tags!
+    return re.sub(r'</?(?!(?:tg-emoji\b))[^>]+>', '', text).strip()
+
 def get_string(lang: str, key: str, **kwargs) -> str:
     # Check custom override first
     lang_key = f"{lang}:{key}"
@@ -506,7 +512,7 @@ def get_string(lang: str, key: str, **kwargs) -> str:
         template = lang_dict.get(key, STRINGS["bn"].get(key, ""))
     
     if key and key.startswith("btn_"):
-        template = re.sub(r'<[^>]+>', '', template).strip()
+        template = clean_button_text(template)
 
     if kwargs:
         try:
@@ -514,5 +520,6 @@ def get_string(lang: str, key: str, **kwargs) -> str:
         except Exception:
             return template
     return template
+
 
 

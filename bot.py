@@ -1586,11 +1586,11 @@ async def process_admin_text_input(update: Update, context: ContextTypes.DEFAULT
         new_text = update.message.text or ""
 
     if editing_key.startswith("btn_"):
-        # Telegram Reply Keyboard Buttons cannot render HTML tags (like <blockquote> or <tg-emoji>).
-        # Clean HTML tags so standard emojis and clean button text display properly.
-        new_text = re.sub(r'<[^>]+>', '', new_text).strip()
+        # Strip container formatting tags (blockquote, b, i, code) but PRESERVE Telegram Premium <tg-emoji> tags!
+        new_text = re.sub(r'</?(?!(?:tg-emoji\b))[^>]+>', '', new_text).strip()
         if not new_text and update.message and update.message.text:
             new_text = update.message.text.strip()
+
 
     # Save setting in DB
     await db.set_setting(f"text_{editing_key}", new_text)
