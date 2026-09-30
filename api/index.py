@@ -27,6 +27,8 @@ async def get_ptb_app() -> Application:
     global ptb_app
     if ptb_app is None:
         await init_db()
+        if not BOT_TOKEN:
+            raise ValueError("BOT_TOKEN environment variable is missing in Vercel!")
         ptb_app = setup_bot_application(BOT_TOKEN)
         await ptb_app.initialize()
     return ptb_app
@@ -41,26 +43,50 @@ async def root_index(request: Request):
         base_url = "https://" + base_url[7:]
     webhook_url = f"{base_url}/api/webhook"
     
-    bot_app = await get_ptb_app()
-    webhook_set = False
-    
-    # Telegram secret_token only allows A-Z, a-z, 0-9, _, -
-    clean_secret = re.sub(r'[^A-Za-z0-9_-]', '', WEBHOOK_SECRET) if WEBHOOK_SECRET else None
-    
+    if not BOT_TOKEN:
+        return {
+            "status": "error",
+            "message": "BOT_TOKEN environment variable is missing in Vercel settings!",
+            "webhook_url": webhook_url
+        }
+
     try:
-        if clean_secret:
-            webhook_set = await bot_app.bot.set_webhook(webhook_url, secret_token=clean_secret)
-        else:
-            webhook_set = await bot_app.bot.set_webhook(webhook_url)
+        bot_app = await get_ptb_app()
+        webhook_set = False
+        
+        # Telegram secret_token only allows A-Z, a-z, 0-9, _, -
+        clean_secret = re.sub(r'[^A-Za-z0-9_-]', '', WEBHOOK_SECRET) if WEBHOOK_SECRET else None
+        
+        # Check current webhook info to prevent Telegram 429 Flood Control error
+        try:
+            info = await bot_app.bot.get_webhook_info()
+            if info and info.url == webhook_url:
+                webhook_set = True
+            else:
+                if clean_secret:
+                    webhook_set = await bot_app.bot.set_webhook(webhook_url, secret_token=clean_secret)
+                else:
+                    webhook_set = await bot_app.bot.set_webhook(webhook_url)
+        except Exception as e:
+            if "Too Many Requests" in str(e) or "429" in str(e):
+                webhook_set = True  # Already set recently
+            else:
+                raise e
+
+        return {
+            "status": "online",
+            "bot_name": "PrimeTemp Mail Bot",
+            "webhook_url": webhook_url,
+            "webhook_set_success": webhook_set
+        }
+
     except Exception as e:
         logger.error(f"Error setting webhook: {e}")
-
-    return {
-        "status": "online",
-        "bot_name": "PrimeTemp Mail Bot",
-        "webhook_url": webhook_url,
-        "webhook_set_success": webhook_set
-    }
+        return {
+            "status": "error",
+            "message": str(e),
+            "webhook_url": webhook_url
+        }
 
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):

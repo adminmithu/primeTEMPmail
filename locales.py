@@ -492,6 +492,8 @@ class SafeDict(dict):
     def __missing__(self, key):
         return "{" + key + "}"
 
+import re
+
 def get_string(lang: str, key: str, **kwargs) -> str:
     # Check custom override first
     lang_key = f"{lang}:{key}"
@@ -503,10 +505,14 @@ def get_string(lang: str, key: str, **kwargs) -> str:
         lang_dict = STRINGS.get(lang, STRINGS["bn"])
         template = lang_dict.get(key, STRINGS["bn"].get(key, ""))
     
+    if key and key.startswith("btn_"):
+        template = re.sub(r'<[^>]+>', '', template).strip()
+
     if kwargs:
         try:
             return template.format_map(SafeDict(**kwargs))
         except Exception:
             return template
     return template
+
 
