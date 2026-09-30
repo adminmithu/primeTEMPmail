@@ -129,6 +129,12 @@ async def init_db():
         except Exception as e:
             logger.warning(f"Supabase connection check skipped: {e}")
 
+    # 3. Auto-sync custom text overrides into memory
+    try:
+        await sync_locales_custom_texts()
+    except Exception as e:
+        logger.warning(f"Locales custom text sync skipped: {e}")
+
     logger.info("Database initialized successfully.")
 
 async def set_user_language(telegram_id: int, lang: str):

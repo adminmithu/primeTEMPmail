@@ -20,9 +20,16 @@ CREATE TABLE IF NOT EXISTS public.accounts (
     UNIQUE(telegram_id, email)
 );
 
+CREATE TABLE IF NOT EXISTS public.settings (
+    key text PRIMARY KEY,
+    value text
+);
+
 -- Enable RLS and Grant Access
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public anon access to users" ON public.users FOR ALL USING (true);
 CREATE POLICY "Allow public anon access to accounts" ON public.accounts FOR ALL USING (true);
+CREATE POLICY "Allow public anon access to settings" ON public.settings FOR ALL USING (true);
