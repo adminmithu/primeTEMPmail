@@ -1143,6 +1143,11 @@ async def get_user_payment_claims(telegram_id: int):
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
+if os.getenv("VERCEL"):
+    BACKUP_FILE = "/tmp/custom_texts_backup.json"
+else:
+    BACKUP_FILE = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
+
 async def get_setting(key: str, default: str = "") -> str:
     if USE_SUPABASE:
         try:
@@ -1184,14 +1189,13 @@ async def set_setting(key: str, value: str):
 
     if key.startswith("text_"):
         try:
-            backup_file = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
             data = {}
-            if os.path.exists(backup_file):
+            if os.path.exists(BACKUP_FILE):
                 import json
-                with open(backup_file, "r", encoding="utf-8") as f:
+                with open(BACKUP_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
             data[key[5:]] = value
-            with open(backup_file, "w", encoding="utf-8") as f:
+            with open(BACKUP_FILE, "w", encoding="utf-8") as f:
                 import json
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
@@ -1215,16 +1219,15 @@ async def delete_setting(key: str):
         await db.commit()
 
     if key.startswith("text_"):
-        backup_file = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
-        if os.path.exists(backup_file):
+        if os.path.exists(BACKUP_FILE):
             try:
                 import json
-                with open(backup_file, "r", encoding="utf-8") as f:
+                with open(BACKUP_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 real_key = key[5:]
                 if real_key in data:
                     del data[real_key]
-                    with open(backup_file, "w", encoding="utf-8") as f:
+                    with open(BACKUP_FILE, "w", encoding="utf-8") as f:
                         json.dump(data, f, ensure_ascii=False, indent=2)
             except Exception as e:
                 logger.warning(f"Failed to delete from custom_texts_backup.json: {e}")
@@ -1257,11 +1260,10 @@ async def get_all_custom_texts() -> dict:
                 if r[0].startswith("text_"):
                     results[r[0][5:]] = r[1]
 
-    backup_file = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
-    if not results and os.path.exists(backup_file):
+    if not results and os.path.exists(BACKUP_FILE):
         try:
             import json
-            with open(backup_file, "r", encoding="utf-8") as f:
+            with open(BACKUP_FILE, "r", encoding="utf-8") as f:
                 file_data = json.load(f)
                 if isinstance(file_data, dict):
                     results = file_data
@@ -1287,10 +1289,9 @@ async def reset_all_custom_settings():
         await db.execute("DELETE FROM settings WHERE key LIKE 'text_%'")
         await db.commit()
 
-    backup_file = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
-    if os.path.exists(backup_file):
+    if os.path.exists(BACKUP_FILE):
         try:
-            os.remove(backup_file)
+            os.remove(BACKUP_FILE)
         except Exception as e:
             logger.warning(f"Failed to remove custom_texts_backup.json: {e}")
 
