@@ -1146,15 +1146,15 @@ async def get_user_payment_claims(telegram_id: int):
 async def get_setting(key: str, default: str = "") -> str:
     if USE_SUPABASE:
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
+            async with httpx.AsyncClient(timeout=5.0) as client:
                 res = await client.get(
                     f"{SUPABASE_URL}/rest/v1/settings?key=eq.{key}&select=value",
                     headers=get_supabase_headers()
                 )
                 if res.status_code == 200 and res.json():
                     return res.json()[0].get("value", default)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Supabase get_setting error: {e}")
 
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
@@ -1167,10 +1167,12 @@ async def set_setting(key: str, value: str):
             payload = {"key": key, "value": value}
             headers = get_supabase_headers()
             headers["Prefer"] = "resolution=merge-duplicates"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                await client.post(f"{SUPABASE_URL}/rest/v1/settings", json=payload, headers=headers)
-        except Exception:
-            pass
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.post(f"{SUPABASE_URL}/rest/v1/settings", json=payload, headers=headers)
+                if res.status_code not in (200, 201, 204):
+                    logger.warning(f"Supabase set_setting HTTP {res.status_code}: {res.text}")
+        except Exception as e:
+            logger.warning(f"Supabase set_setting exception: {e}")
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
@@ -1180,28 +1182,60 @@ async def set_setting(key: str, value: str):
         """, (key, value))
         await db.commit()
 
+    if key.startswith("text_"):
+        try:
+            backup_file = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
+            data = {}
+            if os.path.exists(backup_file):
+                import json
+                with open(backup_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            data[key[5:]] = value
+            with open(backup_file, "w", encoding="utf-8") as f:
+                import json
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to update custom_texts_backup.json: {e}")
+
 async def delete_setting(key: str):
     if USE_SUPABASE:
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                await client.delete(
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.delete(
                     f"{SUPABASE_URL}/rest/v1/settings?key=eq.{key}",
                     headers=get_supabase_headers()
                 )
-        except Exception:
-            pass
+                if res.status_code not in (200, 204):
+                    logger.warning(f"Supabase delete_setting HTTP {res.status_code}: {res.text}")
+        except Exception as e:
+            logger.warning(f"Supabase delete_setting exception: {e}")
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM settings WHERE key = ?", (key,))
         await db.commit()
 
+    if key.startswith("text_"):
+        backup_file = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
+        if os.path.exists(backup_file):
+            try:
+                import json
+                with open(backup_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                real_key = key[5:]
+                if real_key in data:
+                    del data[real_key]
+                    with open(backup_file, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning(f"Failed to delete from custom_texts_backup.json: {e}")
+
 async def get_all_custom_texts() -> dict:
     results = {}
     if USE_SUPABASE:
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
+            async with httpx.AsyncClient(timeout=5.0) as client:
                 res = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/settings?key=like.text_%&select=key,value",
+                    f"{SUPABASE_URL}/rest/v1/settings?key=like.text_%25&select=key,value",
                     headers=get_supabase_headers()
                 )
                 if res.status_code == 200 and res.json():
@@ -1211,8 +1245,10 @@ async def get_all_custom_texts() -> dict:
                         if k.startswith("text_"):
                             results[k[5:]] = v
                     return results
-        except Exception:
-            pass
+                else:
+                    logger.warning(f"Supabase get_all_custom_texts HTTP {res.status_code}: {res.text}")
+        except Exception as e:
+            logger.warning(f"Supabase get_all_custom_texts exception: {e}")
 
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT key, value FROM settings WHERE key LIKE 'text_%'") as cursor:
@@ -1220,22 +1256,43 @@ async def get_all_custom_texts() -> dict:
             for r in rows:
                 if r[0].startswith("text_"):
                     results[r[0][5:]] = r[1]
+
+    backup_file = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
+    if not results and os.path.exists(backup_file):
+        try:
+            import json
+            with open(backup_file, "r", encoding="utf-8") as f:
+                file_data = json.load(f)
+                if isinstance(file_data, dict):
+                    results = file_data
+        except Exception as e:
+            logger.warning(f"Failed to load custom_texts_backup.json: {e}")
+
     return results
 
 async def reset_all_custom_settings():
     if USE_SUPABASE:
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                await client.delete(
-                    f"{SUPABASE_URL}/rest/v1/settings?key=like.text_%",
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/settings?key=like.text_%25",
                     headers=get_supabase_headers()
                 )
-        except Exception:
-            pass
+                if res.status_code not in (200, 204):
+                    logger.warning(f"Supabase reset_all_custom_settings HTTP {res.status_code}: {res.text}")
+        except Exception as e:
+            logger.warning(f"Supabase reset_all_custom_settings exception: {e}")
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM settings WHERE key LIKE 'text_%'")
         await db.commit()
+
+    backup_file = os.path.join(os.path.dirname(__file__), "custom_texts_backup.json")
+    if os.path.exists(backup_file):
+        try:
+            os.remove(backup_file)
+        except Exception as e:
+            logger.warning(f"Failed to remove custom_texts_backup.json: {e}")
 
 async def sync_locales_custom_texts():
     from locales import reset_all_custom_texts, set_custom_text
