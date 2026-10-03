@@ -17,7 +17,7 @@ class MailTmAPI:
         self.default_base_url = MAIL_TM_API_BASE.rstrip("/")
         self.timeout = httpx.Timeout(15.0, connect=10.0)
         self._client = None
-        self.active_provider = "auto"  # 'mail_tm', 'mail_gw', 'auto'
+        self.active_provider = "mail_tm"  # Mail.tm Primary API
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -30,80 +30,11 @@ class MailTmAPI:
         return self._client
 
     def get_base_urls(self) -> list:
-        """Return priority list of API endpoints based on active provider setting."""
-        if self.active_provider == "mail_gw":
-            return ["https://api.mail.gw", "https://api.mail.tm"]
-        elif self.active_provider == "mail_tm":
-            return ["https://api.mail.tm", "https://api.mail.gw"]
-        else: # 'auto'
-            return ["https://api.mail.tm", "https://api.mail.gw"]
-
-    async def get_1secmail_domains(self) -> list:
-        """Fetch active domain list from 1SecMail API."""
-        client = self._get_client()
-        try:
-            res = await client.get("https://www.1secmail.com/api/v1/?action=getDomainList")
-            if res.status_code == 200:
-                domains = res.json()
-                if isinstance(domains, list) and len(domains) > 0:
-                    return domains
-        except Exception as e:
-            logger.warning(f"1SecMail fetch domains error: {e}")
-        return ["1secmail.com", "1secmail.org", "1secmail.net"]
-
-    async def get_1secmail_messages(self, email: str) -> list:
-        """Fetch inbox message summary list from 1SecMail API for given email."""
-        if "@" not in email:
-            return []
-        login, domain = email.split("@", 1)
-        client = self._get_client()
-        try:
-            url = f"https://www.1secmail.com/api/v1/?action=getMessages&login={login}&domain={domain}"
-            res = await client.get(url)
-            if res.status_code == 200:
-                raw_msgs = res.json()
-                formatted_msgs = []
-                for m in raw_msgs:
-                    formatted_msgs.append({
-                        "id": str(m.get("id")),
-                        "from": {"address": m.get("from", "Unknown"), "name": m.get("from", "Unknown")},
-                        "subject": m.get("subject", "No Subject"),
-                        "createdAt": m.get("date", ""),
-                        "intro": m.get("subject", "")
-                    })
-                return formatted_msgs
-        except Exception as e:
-            logger.warning(f"1SecMail get messages error for {email}: {e}")
-        return []
-
-    async def get_1secmail_message_detail(self, email: str, msg_id: str) -> dict:
-        """Fetch full details of a specific email message from 1SecMail API."""
-        if "@" not in email:
-            return {}
-        login, domain = email.split("@", 1)
-        client = self._get_client()
-        try:
-            url = f"https://www.1secmail.com/api/v1/?action=readMessage&login={login}&domain={domain}&id={msg_id}"
-            res = await client.get(url)
-            if res.status_code == 200:
-                data = res.json()
-                return {
-                    "id": str(data.get("id")),
-                    "from": {"address": data.get("from", "Unknown"), "name": data.get("from", "Unknown")},
-                    "subject": data.get("subject", "No Subject"),
-                    "createdAt": data.get("date", ""),
-                    "text": data.get("textBody", "") or data.get("body", ""),
-                    "html": [data.get("htmlBody", "")] if data.get("htmlBody") else []
-                }
-        except Exception as e:
-            logger.warning(f"1SecMail get message detail error for {email}:{msg_id}: {e}")
-        return {}
+        """Return priority list of Mail.tm API endpoints."""
+        return ["https://api.mail.tm", "https://api.mail.gw"]
 
     async def get_domains(self, retries: int = 2) -> list:
-        """Fetch list of available active domains from active provider with retries & failover."""
-        if self.active_provider == "1secmail":
-            return await self.get_1secmail_domains()
-
+        """Fetch list of available active domains dynamically from Mail.tm API."""
         client = self._get_client()
         base_urls = self.get_base_urls()
         active_domains = []
@@ -137,23 +68,14 @@ class MailTmAPI:
                 if attempt < retries - 1:
                     await asyncio.sleep(0.5)
 
-        if not active_domains or self.active_provider == "auto":
-            sec_domains = await self.get_1secmail_domains()
-            for sd in sec_domains:
-                if sd not in active_domains:
-                    active_domains.append(sd)
-
         return active_domains
 
     async def create_account(self, address: str, password: str, retries: int = 2) -> dict:
-        """Create a new temporary email account with multi-endpoint failover."""
-        sec_domains = ["1secmail.com", "1secmail.org", "1secmail.net", "vmail.dev", "kzclip.com", "vq2.org"]
-        if "@" in address and address.split("@", 1)[1].lower() in sec_domains:
-            return {"id": "1secmail", "address": address}
-
+        """Create a new temporary email account on Mail.tm API."""
         client = self._get_client()
         payload = {"address": address, "password": password}
         base_urls = self.get_base_urls()
+        last_exception = None
         for base_url in base_urls:
             for attempt in range(retries):
                 try:
@@ -170,17 +92,16 @@ class MailTmAPI:
                 except ValueError:
                     raise
                 except Exception as e:
+                    last_exception = e
                     logger.warning(f"Create account [{base_url}] attempt {attempt+1} failed: {e}")
                 if attempt < retries - 1:
                     await asyncio.sleep(0.5)
-        return {"id": "1secmail", "address": address}
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("Failed to create account on Mail.tm API")
 
     async def get_token(self, address: str, password: str, retries: int = 2) -> str:
-        """Authenticate account credentials and get Bearer JWT Token with multi-endpoint failover."""
-        sec_domains = ["1secmail.com", "1secmail.org", "1secmail.net", "vmail.dev", "kzclip.com", "vq2.org"]
-        if "@" in address and address.split("@", 1)[1].lower() in sec_domains:
-            return "1secmail"
-
+        """Authenticate account credentials and return Bearer JWT Token from Mail.tm API."""
         client = self._get_client()
         payload = {"address": address, "password": password}
         base_urls = self.get_base_urls()
@@ -190,17 +111,19 @@ class MailTmAPI:
                     res = await client.post(f"{base_url}/token", json=payload)
                     if res.status_code == 200:
                         data = res.json()
-                        return data.get("token", "")
+                        token = data.get("token", "")
+                        if token:
+                            return token
                 except Exception as e:
                     logger.warning(f"Get token [{base_url}] attempt {attempt+1} failed: {e}")
                 if attempt < retries - 1:
                     await asyncio.sleep(0.5)
-        return "1secmail"
+        return ""
 
     async def get_messages(self, token: str, page: int = 1, retries: int = 2, email: str = "") -> list:
-        """Fetch inbox message summary list for the authenticated token with multi-endpoint failover."""
-        if token == "1secmail" or (email and any(d in email.lower() for d in ["1secmail.com", "1secmail.org", "1secmail.net", "vmail.dev", "kzclip.com", "vq2.org"])):
-            return await self.get_1secmail_messages(email)
+        """Fetch inbox message summary list from Mail.tm API for authenticated token."""
+        if not token or token == "1secmail":
+            raise Exception("UNAUTHORIZED")
 
         client = self._get_client()
         headers = {"Authorization": f"Bearer {token}"}
@@ -226,9 +149,9 @@ class MailTmAPI:
         return []
 
     async def get_message_detail(self, token: str, message_id: str, retries: int = 2, email: str = "") -> dict:
-        """Fetch full details of a specific email message with multi-endpoint failover."""
-        if token == "1secmail" or (email and any(d in email.lower() for d in ["1secmail.com", "1secmail.org", "1secmail.net", "vmail.dev", "kzclip.com", "vq2.org"])):
-            return await self.get_1secmail_message_detail(email, message_id)
+        """Fetch full details of a specific email message from Mail.tm API."""
+        if not token or token == "1secmail":
+            raise Exception("UNAUTHORIZED")
 
         client = self._get_client()
         headers = {"Authorization": f"Bearer {token}"}
@@ -249,8 +172,28 @@ class MailTmAPI:
                     await asyncio.sleep(0.5)
         return {}
 
+    async def get_account_me(self, token: str) -> dict:
+        """Fetch account details (/me) from Mail.tm API using Bearer JWT Token."""
+        if not token or token == "1secmail":
+            return {}
+
+        client = self._get_client()
+        headers = {"Authorization": f"Bearer {token}"}
+        base_urls = self.get_base_urls()
+        for base_url in base_urls:
+            try:
+                res = await client.get(f"{base_url}/me", headers=headers)
+                if res.status_code == 200:
+                    return res.json()
+            except Exception as e:
+                logger.warning(f"Get /me [{base_url}] failed: {e}")
+        return {}
+
     async def delete_account(self, token: str, account_id: str) -> bool:
-        """Delete an account permanently."""
+        """Delete an account permanently on Mail.tm API."""
+        if not token or token == "1secmail":
+            return False
+
         client = self._get_client()
         headers = {"Authorization": f"Bearer {token}"}
         base_urls = self.get_base_urls()
@@ -264,7 +207,10 @@ class MailTmAPI:
         return False
 
     async def delete_message(self, token: str, message_id: str) -> bool:
-        """Delete a single message permanently."""
+        """Delete a single message permanently on Mail.tm API."""
+        if not token or token == "1secmail":
+            return False
+
         client = self._get_client()
         headers = {"Authorization": f"Bearer {token}"}
         base_urls = self.get_base_urls()
@@ -278,4 +224,3 @@ class MailTmAPI:
         return False
 
 mail_api = MailTmAPI()
-

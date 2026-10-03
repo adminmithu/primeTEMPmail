@@ -178,27 +178,6 @@ async def save_account(telegram_id: int, email: str, password: str, token: str =
     import datetime
     expires_at = (datetime.datetime.now() + datetime.timedelta(days=60)).strftime("%Y-%m-%d %H:%M:%S")
 
-    if USE_SUPABASE:
-        try:
-            acc_payload = {
-                "telegram_id": telegram_id,
-                "email": email,
-                "password": password,
-                "token": token,
-                "account_id": account_id,
-                "expires_at": expires_at,
-                "free_trial_used": 0
-            }
-            user_payload = {"telegram_id": telegram_id, "active_email": email}
-            headers = get_supabase_headers()
-            headers["Prefer"] = "resolution=merge-duplicates"
-            
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(f"{SUPABASE_URL}/rest/v1/accounts", json=acc_payload, headers=headers)
-                await client.post(f"{SUPABASE_URL}/rest/v1/users", json=user_payload, headers=headers)
-        except Exception as e:
-            logger.warning(f"Supabase save_account error: {e}")
-
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             INSERT INTO accounts (telegram_id, email, password, token, account_id, expires_at, free_trial_used)
@@ -218,141 +197,27 @@ async def save_account(telegram_id: int, email: str, password: str, token: str =
         
         await db.commit()
 
-async def extend_email_validity_free(telegram_id: int, email: str):
-    acc = await get_account(telegram_id, email)
-    if not acc:
-        return False, "account_not_found"
-
-    free_used = acc.get("free_trial_used", 0)
-    if free_used and int(free_used) == 1:
-        return False, "already_used"
-
-    import datetime
-    current_exp = acc.get("expires_at")
-    if current_exp:
-        try:
-            exp_dt = datetime.datetime.strptime(str(current_exp)[:19], "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            exp_dt = datetime.datetime.now()
-    else:
-        exp_dt = datetime.datetime.now()
-
-    new_exp_dt = exp_dt + datetime.timedelta(days=60)
-    new_exp_str = new_exp_dt.strftime("%Y-%m-%d %H:%M:%S")
-
     if USE_SUPABASE:
         try:
+            acc_payload = {
+                "telegram_id": telegram_id,
+                "email": email,
+                "password": password,
+                "token": token,
+                "account_id": account_id
+            }
+            user_payload = {"telegram_id": telegram_id, "active_email": email}
+            headers = get_supabase_headers()
+            headers["Prefer"] = "resolution=merge-duplicates"
+            
             async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.patch(
-                    f"{SUPABASE_URL}/rest/v1/accounts?telegram_id=eq.{telegram_id}&email=eq.{email}",
-                    json={"expires_at": new_exp_str, "free_trial_used": 1},
-                    headers=get_supabase_headers()
-                )
-        except Exception:
-            pass
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE accounts SET expires_at = ?, free_trial_used = 1 WHERE telegram_id = ? AND email = ?",
-            (new_exp_str, telegram_id, email)
-        )
-        await db.commit()
-
-    return True, new_exp_str
-
-async def extend_email_validity_paid(telegram_id: int, email: str, days: int = 60):
-    acc = await get_account(telegram_id, email)
-    if not acc:
-        return False
-
-    import datetime
-    current_exp = acc.get("expires_at")
-    if current_exp:
-        try:
-            exp_dt = datetime.datetime.strptime(str(current_exp)[:19], "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            exp_dt = datetime.datetime.now()
-    else:
-        exp_dt = datetime.datetime.now()
-
-    new_exp_dt = exp_dt + datetime.timedelta(days=days)
-    new_exp_str = new_exp_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    if USE_SUPABASE:
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.patch(
-                    f"{SUPABASE_URL}/rest/v1/accounts?telegram_id=eq.{telegram_id}&email=eq.{email}",
-                    json={"expires_at": new_exp_str},
-                    headers=get_supabase_headers()
-                )
-        except Exception:
-            pass
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE accounts SET expires_at = ? WHERE telegram_id = ? AND email = ?",
-            (new_exp_str, telegram_id, email)
-        )
-        await db.commit()
-
-    return True
-
-async def extend_all_user_accounts_validity_paid(telegram_id: int, days: int = 60):
-    accounts = await get_user_accounts(telegram_id)
-    if not accounts:
-        return False
-
-    import datetime
-    now = datetime.datetime.now()
-    for acc in accounts:
-        current_exp = acc.get("expires_at")
-        if current_exp:
-            try:
-                exp_dt = datetime.datetime.strptime(str(current_exp)[:19], "%Y-%m-%d %H:%M:%S")
-            except Exception:
-                exp_dt = now
-        else:
-            exp_dt = now
-
-        base_dt = max(exp_dt, now)
-        new_exp_dt = base_dt + datetime.timedelta(days=days)
-        new_exp_str = new_exp_dt.strftime("%Y-%m-%d %H:%M:%S")
-        email = acc["email"]
-
-        if USE_SUPABASE:
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    await client.patch(
-                        f"{SUPABASE_URL}/rest/v1/accounts?telegram_id=eq.{telegram_id}&email=eq.{email}",
-                        json={"expires_at": new_exp_str},
-                        headers=get_supabase_headers()
-                    )
-            except Exception:
-                pass
-
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "UPDATE accounts SET expires_at = ? WHERE telegram_id = ? AND email = ?",
-                (new_exp_str, telegram_id, email)
-            )
-            await db.commit()
-
-    return True
+                await client.post(f"{SUPABASE_URL}/rest/v1/accounts", json=acc_payload, headers=headers)
+                await client.post(f"{SUPABASE_URL}/rest/v1/users", json=user_payload, headers=headers)
+        except Exception as e:
+            logger.warning(f"Supabase save_account error: {e}")
 
 async def get_user_accounts(telegram_id: int):
-    if USE_SUPABASE:
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                res = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/accounts?telegram_id=eq.{telegram_id}&order=id.desc",
-                    headers=get_supabase_headers()
-                )
-                if res.status_code == 200 and res.json():
-                    return res.json()
-        except Exception:
-            pass
-
+    sqlite_accs = []
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -360,9 +225,49 @@ async def get_user_accounts(telegram_id: int):
             (telegram_id,)
         ) as cursor:
             rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+            sqlite_accs = [dict(row) for row in rows]
+
+    supabase_accs = []
+    if USE_SUPABASE:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/accounts?telegram_id=eq.{telegram_id}&order=id.desc",
+                    headers=get_supabase_headers()
+                )
+                if res.status_code == 200 and isinstance(res.json(), list):
+                    supabase_accs = res.json()
+        except Exception as e:
+            logger.warning(f"Supabase get_user_accounts error: {e}")
+
+    merged = {}
+    for acc in sqlite_accs:
+        if acc and acc.get("email"):
+            merged[acc["email"].lower()] = acc
+
+    for acc in supabase_accs:
+        if acc and acc.get("email"):
+            email_key = acc["email"].lower()
+            if email_key not in merged:
+                merged[email_key] = acc
+            else:
+                for k, v in acc.items():
+                    if v and not merged[email_key].get(k):
+                        merged[email_key][k] = v
+
+    return list(merged.values())
 
 async def get_account(telegram_id: int, email: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT email, password, token, account_id, last_msg_id, expires_at, free_trial_used FROM accounts WHERE telegram_id = ? AND email = ?",
+            (telegram_id, email)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+
     if USE_SUPABASE:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -375,17 +280,20 @@ async def get_account(telegram_id: int, email: str):
         except Exception:
             pass
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT email, password, token, account_id, last_msg_id, expires_at, free_trial_used FROM accounts WHERE telegram_id = ? AND email = ?",
-            (telegram_id, email)
-        ) as cursor:
-            row = await cursor.fetchone()
-            return dict(row) if row else None
+    return None
 
 async def get_active_account(telegram_id: int):
-    if USE_SUPABASE:
+    active_email = None
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT active_email FROM users WHERE telegram_id = ?",
+            (telegram_id,)
+        ) as cursor:
+            user_row = await cursor.fetchone()
+            if user_row and user_row[0]:
+                active_email = user_row[0]
+
+    if not active_email and USE_SUPABASE:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 u_res = await client.get(
@@ -394,33 +302,21 @@ async def get_active_account(telegram_id: int):
                 )
                 if u_res.status_code == 200 and u_res.json():
                     active_email = u_res.json()[0].get("active_email")
-                    if active_email:
-                        a_res = await client.get(
-                            f"{SUPABASE_URL}/rest/v1/accounts?telegram_id=eq.{telegram_id}&email=eq.{active_email}",
-                            headers=get_supabase_headers()
-                        )
-                        if a_res.status_code == 200 and a_res.json():
-                            return a_res.json()[0]
         except Exception:
             pass
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT active_email FROM users WHERE telegram_id = ?",
-            (telegram_id,)
-        ) as cursor:
-            user_row = await cursor.fetchone()
-            if not user_row or not user_row["active_email"]:
-                return None
-            active_email = user_row["active_email"]
+    if active_email:
+        acc = await get_account(telegram_id, active_email)
+        if acc:
+            return acc
 
-        async with db.execute(
-            "SELECT email, password, token, account_id, last_msg_id FROM accounts WHERE telegram_id = ? AND email = ?",
-            (telegram_id, active_email)
-        ) as cursor:
-            acc_row = await cursor.fetchone()
-            return dict(acc_row) if acc_row else None
+    all_accs = await get_user_accounts(telegram_id)
+    if all_accs:
+        latest_acc = all_accs[0]
+        await set_active_account(telegram_id, latest_acc["email"])
+        return latest_acc
+
+    return None
 
 async def set_active_account(telegram_id: int, email: str):
     if USE_SUPABASE:

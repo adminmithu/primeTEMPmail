@@ -164,9 +164,9 @@ async def ensure_valid_token(user_id: int, acc: dict) -> str:
     email = acc.get("email")
     password = acc.get("password")
 
-    if token:
+    if token and token != "1secmail":
         try:
-            await mail_api.get_messages(token)
+            await mail_api.get_messages(token, email=email)
             return token
         except Exception as e:
             if str(e) != "UNAUTHORIZED":
@@ -175,14 +175,14 @@ async def ensure_valid_token(user_id: int, acc: dict) -> str:
     if email and password:
         try:
             new_token = await mail_api.get_token(email, password)
-            if new_token:
+            if new_token and new_token != "1secmail":
                 await db.update_account_token(user_id, email, new_token)
                 acc["token"] = new_token
                 return new_token
         except Exception as e:
             logger.error(f"Auto token refresh failed for {email}: {e}")
 
-    return token
+    return token if (token and token != "1secmail") else None
 
 async def create_new_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, custom_name: str = None):
     user_id = update.effective_user.id
@@ -1645,15 +1645,16 @@ async def auto_inbox_poller_task(app: Application):
                     token = acc["token"]
                     last_msg_id = acc.get("last_msg_id")
 
-                    if not token and acc.get("password"):
+                    if (not token or token == "1secmail") and acc.get("password"):
                         try:
                             token = await mail_api.get_token(email, acc["password"])
-                            await db.update_account_token(u_id, email, token)
-                            acc["token"] = token
+                            if token and token != "1secmail":
+                                await db.update_account_token(u_id, email, token)
+                                acc["token"] = token
                         except Exception:
                             continue
 
-                    if not token:
+                    if not token or token == "1secmail":
                         continue
 
                     try:
@@ -2095,11 +2096,12 @@ async def process_login_input(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         token = await mail_api.get_token(email, password)
-        headers = {"Authorization": f"Bearer {token}"}
-        import httpx
-        async with httpx.AsyncClient() as client:
-            res = await client.get("https://api.mail.tm/me", headers=headers)
-            acc_id = res.json().get("id", "") if res.status_code == 200 else ""
+        if not token or token == "1secmail":
+            await status_msg.edit_text("❌ Login failed. Invalid email or password.", parse_mode="HTML")
+            return WAITING_FOR_LOGIN_INPUT
+
+        me_info = await mail_api.get_account_me(token)
+        acc_id = me_info.get("id", "")
 
         await db.save_account(user_id, email, password, token, acc_id)
         
